@@ -1,0 +1,27 @@
+Logger:
+  Level: INFO
+  Format: json
+
+Storage:
+  Type: awss3
+  S3:
+    Endpoint: endpoint
+    Bucket: bucket
+    AccessKey: access_key
+    AccessSecret: access_secret
+
+Searcher:
+  Address: searcher:50051
+
+Recorder:
+  BlockSize: 1024MiB
+  ChunkSize: 128MiB
+  BlocksDir: ./tmp
+
+Gateway:
+  GRPC:
+    Enabled: true
+    Address: 0.0.0.0:50051
+  Debug:
+    Enabled: true
+    Address: localhost:6060

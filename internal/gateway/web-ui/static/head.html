@@ -1,0 +1,46 @@
+{{ define "head" }}
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style type="text/css">
+        {{ pretty_css }}
+    </style>
+    <style type="text/css">
+        td {
+            border-bottom: 1px solid #00000070;
+            align-content: start;
+            padding: 0.5rem;
+        }
+        td:first-child {
+            width: 20%;
+            white-space: nowrap;
+        }
+        body {
+            font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .head {
+            display: flex;
+            grid-auto-flow: column;
+        }
+        .head .max {
+            flex: 1;
+        }
+        .head * {
+            margin: 0 1rem 0 1rem;
+        }
+        .head > input {
+            background: #00000070;
+            border: 0;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            color: #ffffff80;
+            font-size: medium;
+        }
+        a {
+            text-decoration: none;
+            color: aliceblue;
+        }
+    </style>
+    <title>Clerk</title>
+</head>
+{{ end }}

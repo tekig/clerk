@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package scribe.v1;
+
+option go_package = "../pb";
+
+message Event {
+    bytes id = 1;
+    repeated Attribute attributes = 2;
+}
+
+message Attribute {
+    string key = 1;
+    oneof value {
+        string as_string = 2;
+        int64 as_int64 = 3;
+        double as_double = 4;
+        bool as_bool = 5;
+    }
+}
+
+message Index {
+    message Chunk {
+        repeated bytes ids = 1;
+        int64 size = 2;
+        int64 offset = 3;
+    }
+
+    repeated Chunk chunks = 1;
+}
+
+message Bloom {
+    message Chunk {
+        bytes bloom = 1;
+        int64 size = 2;
+        int64 offset = 3;
+    }
+    
+    repeated Chunk chunks = 1;
+}
+
+
+message CreateEventsRequest {
+    repeated Event events = 1;
+}
+
+message CreateEventsResponse {}
+
+message SearchRequest {
+    bytes id = 1;
+}
+
+message SearchResponse {
+    Event event = 1;
+}
+
+message AppendBlockRequest {
+    string name = 1;
+}
+
+message AppendBlockResponse {
+    
+}
+
+service Recorder {
+    rpc CreateEvents(CreateEventsRequest) returns (CreateEventsResponse) {}
+    rpc Search(SearchRequest) returns (SearchResponse) {}
+}
+
+service Searcher {
+    rpc AppendBlock(AppendBlockRequest) returns (AppendBlockResponse) {}
+    rpc Search(SearchRequest) returns (SearchResponse) {}
+}

@@ -1,0 +1,29 @@
+{{define "event"}}
+<!DOCTYPE html>
+<html lang="en">
+{{template "head"}}
+<body class="chroma">
+    {{template "search" .Id }}
+    <table style="width: 100%;">
+        <tr>
+            <td>
+                <strong>Key</strong>
+            </td>
+            <td>
+                <strong>Value</strong>
+            </td>
+        </tr>
+        {{range .Attributes}}
+        <tr>
+            <td>
+                <strong>{{.Key}}</strong>
+            </td>
+            <td>
+                <pre>{{pretty .Value}}</pre>
+            </td>
+        </tr>
+        {{end}}
+    </table>
+</body>
+</html>
+{{ end }}

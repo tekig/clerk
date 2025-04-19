@@ -1,0 +1,29 @@
+Logger:
+  Level: INFO
+  Format: json
+
+Storage:
+  Type: awss3
+  S3:
+    Endpoint: endpoint
+    Bucket: bucket
+    AccessKey: access_key
+    AccessSecret: access_secret
+
+Cache:
+  Type: mem
+  MaxSize: 100
+
+Recorder:
+  Address: recorder:50051
+
+Gateway:
+  GRPC:
+    Enabled: true
+    Address: 0.0.0.0:50051
+  WebUI:
+    Enabled: true
+    Address: 0.0.0.0:8080
+  Debug:
+    Enabled: true
+    Address: localhost:6060
