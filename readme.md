@@ -26,7 +26,7 @@ docker run -d --name recorder \
     --volume $(pwd)/config/recorder.yaml:/app/config.yaml \
     --network clerk \
     ghcr.io/tekig/clerk:main \
-    /app/bin/recorder --config /app/config.yaml
+    recorder --config /app/config.yaml
 ```
 
 Creates a searcher sub-folder that will search within already created blocks and blocks that have not yet been written.
@@ -36,7 +36,7 @@ docker run -d --name searcher \
     --network clerk \
     -p 8080:8080 \
     ghcr.io/tekig/clerk:main \
-    /app/bin/searcher --config /app/config.yaml
+    searcher --config /app/config.yaml
 ```
 
 To fake data recording, we will run hammer for a short time. CTRL+C to interrupt.
@@ -44,7 +44,7 @@ To fake data recording, we will run hammer for a short time. CTRL+C to interrupt
 docker run --name hammer \
     --network clerk \
     ghcr.io/tekig/clerk:main \
-    /app/bin/hammer --host recorder:50051
+    hammer --host recorder:50051
 ```
 
 Select a random UUID from the log to search and go to the localhost:8080 interface. After entering the UUID in the search, you will see randomly recorded data. You may get a `not found` error for recently written events. This is due to the snappy buffer, write more data to find the latest data.

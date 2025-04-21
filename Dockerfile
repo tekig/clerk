@@ -13,3 +13,5 @@ EXPOSE 8080
 EXPOSE 50051
 
 RUN make build
+
+ENV PATH="/app/bin/:$PATH"
