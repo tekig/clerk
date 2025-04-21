@@ -4,65 +4,113 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/tekig/clerk/internal/logger"
+	otelproxy "github.com/tekig/clerk/internal/otel-proxy"
 	"github.com/tekig/clerk/internal/pb"
 	"github.com/tekig/clerk/internal/recorder"
 	"github.com/tekig/clerk/internal/uuid"
 	otelcollector "go.opentelemetry.io/proto/otlp/collector/trace/v1"
-	v1 "go.opentelemetry.io/proto/otlp/common/v1"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/reflection"
 )
 
 var _ pb.RecorderServer = (*Recorder)(nil)
 
 type Recorder struct {
-	recorder   *recorder.Recorder
-	server     *grpc.Server
-	address    string
-	targetOTEL otelcollector.TraceServiceClient
+	recorder    *recorder.Recorder
+	otelProxy   *otelproxy.Proxy
+	httpServer  *http.Server
+	grpcServer  *grpc.Server
+	grpcAddress string
 	pb.UnimplementedRecorderServer
 	otelcollector.UnimplementedTraceServiceServer
 }
 
 type RecorderConfig struct {
-	Recorder *recorder.Recorder
-	Address  string
+	Recorder    *recorder.Recorder
+	OTELProxy   *otelproxy.Proxy
+	GRPCAddress string
+	HTTPAddress string
 }
 
 func NewRecorder(config RecorderConfig) (*Recorder, error) {
 	g := &Recorder{
-		recorder: config.Recorder,
-		server: grpc.NewServer(
+		otelProxy: config.OTELProxy,
+		recorder:  config.Recorder,
+		grpcServer: grpc.NewServer(
 			grpc.ChainUnaryInterceptor(
 				logger.UnaryServerInterceptor(),
 			),
 		),
-		address: config.Address,
+		grpcAddress: config.GRPCAddress,
 	}
 
-	reflection.Register(g.server)
-	pb.RegisterRecorderServer(g.server, g)
+	reflection.Register(g.grpcServer)
+	pb.RegisterRecorderServer(g.grpcServer, g)
+	otelcollector.RegisterTraceServiceServer(g.grpcServer, g)
+
+	mux := runtime.NewServeMux(
+		runtime.WithMarshalerOption("application/x-protobuf", &runtime.ProtoMarshaller{}),
+		runtime.WithMarshalerOption("application/protobuf", &runtime.ProtoMarshaller{}),
+	)
+
+	_, port, err := net.SplitHostPort(g.grpcAddress)
+	if err != nil {
+		return nil, fmt.Errorf("parse split host: %w", err)
+	}
+
+	if err := otelcollector.RegisterTraceServiceHandlerFromEndpoint(
+		context.Background(),
+		mux,
+		"localhost:"+port,
+		[]grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())},
+	); err != nil {
+		return nil, fmt.Errorf("register trace server: %w", err)
+	}
+
+	g.httpServer = &http.Server{
+		Addr:    config.HTTPAddress,
+		Handler: mux,
+	}
 
 	return g, nil
 }
 
 func (g *Recorder) Run() error {
-	lis, err := net.Listen("tcp", g.address)
-	if err != nil {
-		return fmt.Errorf("listen: %w", err)
-	}
+	wg := &errgroup.Group{}
 
-	if err := g.server.Serve(lis); err != nil {
-		return fmt.Errorf("serve: %w", err)
-	}
+	wg.Go(func() error {
+		if err := g.httpServer.ListenAndServe(); err != nil {
+			return fmt.Errorf("serve: %w", err)
+		}
 
-	return nil
+		return nil
+	})
+
+	wg.Go(func() error {
+		lis, err := net.Listen("tcp", g.grpcAddress)
+		if err != nil {
+			return fmt.Errorf("grpc listen: %w", err)
+		}
+
+		if err := g.grpcServer.Serve(lis); err != nil {
+			return fmt.Errorf("grpc serve: %w", err)
+		}
+
+		return nil
+	})
+
+	return wg.Wait()
 }
 
 func (g *Recorder) Shutdown() error {
-	g.server.GracefulStop()
+	g.httpServer.Shutdown(context.Background())
+	g.grpcServer.GracefulStop()
 
 	return nil
 }
@@ -98,75 +146,10 @@ func (g *Recorder) CreateEvents(ctx context.Context, req *pb.CreateEventsRequest
 }
 
 func (g *Recorder) Export(ctx context.Context, req *otelcollector.ExportTraceServiceRequest) (*otelcollector.ExportTraceServiceResponse, error) {
-	var events = make([]*pb.Event, 0, len(req.ResourceSpans))
-	for _, span := range req.ResourceSpans {
-		id := uuid.New()
-		event := &pb.Event{
-			Id:         id[:],
-			Attributes: make([]*pb.Attribute, 0, len(span.Resource.Attributes)),
-		}
-		for _, attribute := range span.Resource.Attributes {
-			var eventAttribute *pb.Attribute
-			switch v := attribute.Value.Value.(type) {
-			case *v1.AnyValue_StringValue:
-				eventAttribute = &pb.Attribute{
-					Key: attribute.Key,
-					Value: &pb.Attribute_AsString{
-						AsString: v.StringValue,
-					},
-				}
-			case *v1.AnyValue_BoolValue:
-				eventAttribute = &pb.Attribute{
-					Key: attribute.Key,
-					Value: &pb.Attribute_AsBool{
-						AsBool: v.BoolValue,
-					},
-				}
-			case *v1.AnyValue_IntValue:
-				eventAttribute = &pb.Attribute{
-					Key: attribute.Key,
-					Value: &pb.Attribute_AsInt64{
-						AsInt64: v.IntValue,
-					},
-				}
-			case *v1.AnyValue_DoubleValue:
-				eventAttribute = &pb.Attribute{
-					Key: attribute.Key,
-					Value: &pb.Attribute_AsDouble{
-						AsDouble: v.DoubleValue,
-					},
-				}
-			default:
-				eventAttribute = &pb.Attribute{
-					Key: attribute.Key,
-					Value: &pb.Attribute_AsString{
-						AsString: fmt.Sprintf("unsupport attribute %T", v),
-					},
-				}
-			}
-			span.Resource.Attributes = []*v1.KeyValue{
-				{
-					Key: "event_id",
-					Value: &v1.AnyValue{
-						Value: &v1.AnyValue_StringValue{
-							StringValue: id.String(),
-						},
-					},
-				},
-			}
-			event.Attributes = append(event.Attributes, eventAttribute)
-		}
-		events = append(events, event)
-	}
-
-	if err := g.recorder.Write(ctx, events); err != nil {
-		return nil, fmt.Errorf("record events: %w", err)
-	}
-
-	res, err := g.targetOTEL.Export(ctx, req)
+	response, err := g.otelProxy.Grep(ctx, req.ResourceSpans)
 	if err != nil {
-		return nil, fmt.Errorf("target otel export: %w", err)
+		return nil, fmt.Errorf("grep: %w", err)
 	}
 
-	return res, nil
+	return response, nil
 }

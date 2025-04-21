@@ -2,7 +2,6 @@ package block
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"testing"
@@ -75,8 +74,7 @@ func test() error {
 			return fmt.Errorf("search: %w", err)
 		}
 
-		data, _ := json.Marshal(event)
-		println(string(data))
+		_ = event
 	}
 	{
 		// force compress all data
@@ -95,8 +93,7 @@ func test() error {
 			return fmt.Errorf("search: %w", err)
 		}
 
-		data, _ := json.Marshal(event)
-		println(string(data))
+		_ = event
 	}
 
 	if err := block.Close(); err != nil {

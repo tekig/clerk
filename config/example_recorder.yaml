@@ -18,10 +18,20 @@ Recorder:
   ChunkSize: 128MiB
   BlocksDir: ./tmp
 
+OTELProxy:
+  Target: http://otel-export-trace:4318
+  DefaultStrategy: keep
+  FormatURL: http://searcher:8081/events/%s
+  Rules:
+    - Key:
+        - regex:.*
+      Strategy: unlink
+
 Gateway:
   GRPC:
     Enabled: true
     Address: 0.0.0.0:50051
+    Gateway: 0.0.0.0:4318
   Debug:
     Enabled: true
     Address: localhost:6060

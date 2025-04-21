@@ -9,6 +9,7 @@ import (
 
 	debug "github.com/tekig/clerk/internal/gateway/debug"
 	sgrpc "github.com/tekig/clerk/internal/gateway/grpc"
+	otelproxy "github.com/tekig/clerk/internal/otel-proxy"
 	"github.com/tekig/clerk/internal/recorder"
 	"github.com/tekig/clerk/internal/repository"
 	awss3 "github.com/tekig/clerk/internal/repository/aws-s3"
@@ -37,10 +38,17 @@ type RecorderConfig struct {
 		ChunkSize *string
 		BlocksDir *string
 	}
+	OTELProxy struct {
+		Target          string
+		DefaultStrategy string
+		FormatURL       string
+		Rules           []otelproxy.ConfigRule
+	}
 	Gateway struct {
 		GRPC *struct {
 			Enabled bool
 			Address string
+			Gateway string
 		}
 		Debug *struct {
 			Enabled bool
@@ -152,11 +160,24 @@ func NewRecorder() (*Recorder, error) {
 		debugGateway = g
 	}
 
+	proxy, err := otelproxy.New(otelproxy.Config{
+		Target:          config.OTELProxy.Target,
+		Recorder:        r,
+		FormatURL:       config.OTELProxy.FormatURL,
+		DefaultStrategy: config.OTELProxy.DefaultStrategy,
+		Rules:           config.OTELProxy.Rules,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("otel proxy: %w", err)
+	}
+
 	var grpcGateway *sgrpc.Recorder
 	if config.Gateway.Debug != nil && config.Gateway.Debug.Enabled {
 		g, err := sgrpc.NewRecorder(sgrpc.RecorderConfig{
-			Recorder: r,
-			Address:  config.Gateway.GRPC.Address,
+			Recorder:    r,
+			OTELProxy:   proxy,
+			GRPCAddress: config.Gateway.GRPC.Address,
+			HTTPAddress: config.Gateway.GRPC.Gateway,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("http gateway: %w", err)
