@@ -1,8 +1,14 @@
 Logger:
+  # Logging level
+  # Allow: DEBUG, INFO, WARN, ERROR
   Level: INFO
+  # Formatting log output
+  # Allow: text, json
   Format: json
 
 Storage:
+  # Long-term data storage location
+  # Allow: awss3
   Type: awss3
   S3:
     Endpoint: endpoint
@@ -11,19 +17,33 @@ Storage:
     AccessSecret: access_secret
 
 Cache:
+  # Recently found events will be stored to speed up re-searching.
+  # Allow: mem
   Type: mem
-  MaxSize: 100
+  Mem:
+    # The maximum number of messages that can be stored in memory.
+    # Then the event that has not been requested for
+    # a long time will be deleted.
+    # Default: 100
+    MaxSize: 100
 
 Recorder:
+  # An array of addresses to poll the recorder for events
+  # that have not yet been sent to S3. If the address 
+  # domain has several IPs, the request will be sent to each IP.
   Address: recorder:50051
 
 Gateway:
   GRPC:
     Enabled: true
+    # GRPC address to listen to, the recorder engine will 
+    # send a request to this address
     Address: 0.0.0.0:50051
   WebUI:
     Enabled: true
+    # Interface for the ability to search for events via WebUI
     Address: 0.0.0.0:8080
   Debug:
     Enabled: true
+    # pprof
     Address: localhost:6060

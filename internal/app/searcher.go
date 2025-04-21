@@ -30,8 +30,10 @@ type SearcherConfig struct {
 		}
 	}
 	Cache struct {
-		Type    string
-		MaxSize *int
+		Type string
+		Mem  *struct {
+			MaxSize *int
+		}
 	}
 	Recorder struct {
 		Address []string
@@ -98,8 +100,8 @@ func NewSearcher() (*Searcher, error) {
 	switch config.Cache.Type {
 	case "mem":
 		var options []mem.OptionCache
-		if config.Cache.MaxSize != nil {
-			options = append(options, mem.MaxSizeCache(*config.Cache.MaxSize))
+		if config.Cache.Mem != nil && config.Cache.Mem.MaxSize != nil {
+			options = append(options, mem.MaxSizeCache(*config.Cache.Mem.MaxSize))
 		}
 
 		cache = mem.NewCache(options...)

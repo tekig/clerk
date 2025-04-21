@@ -1,8 +1,14 @@
 Logger:
+  # Logging level
+  # Allow: DEBUG, INFO, WARN, ERROR
   Level: INFO
+  # Formatting log output
+  # Allow: text, json
   Format: json
 
 Storage:
+  # Long-term data storage location
+  # Allow: awss3
   Type: awss3
   S3:
     Endpoint: endpoint
@@ -11,27 +17,64 @@ Storage:
     AccessSecret: access_secret
 
 Searcher:
+  # Searcher component address
+  # Recorder will notify searcher about new data blocks
   Address: searcher:50051
 
 Recorder:
+  # Data block is a file that stores all events received
+  # for recording, compressed snappy and in a modified 
+  # proto format. The block is divided into chunks.
+  # For each chunk, a bloom filter is created with a 
+  # reference to a section in the data block.
+  #
+  # Maximum uncompressed data volume written to a block
+  # Soft limit last recorded event will record more
+  #
+  # Allow unit: GiB, MiB, KiB
+  # Default: 1024MiB
   BlockSize: 1024MiB
+  # Maximum uncompressed data volume written to a chunk
+  #
+  # Allow unit: GiB, MiB, KiB
+  # Default: 256MiB
   ChunkSize: 128MiB
+  # Storage space for prepared blocks
+  #
+  # Default: os.TempDir https://pkg.go.dev/os#TempDir
   BlocksDir: ./tmp
 
 OTELProxy:
+  # Endpoint for sending data
   Target: http://otel-export-trace:4318
+  # Default strategy what to do with attributes
+  # if none of the rules match
+  # Allow: keep, unlink
   DefaultStrategy: keep
+  # The format of the string that will be stored instead 
+  # of the attribute value
+  # Example: http://searcher:8081/events/32e8db92-9300-4a9b-804f-da2498d170bf
   FormatURL: http://searcher:8081/events/%s
+  # The rule will be checked in order until it finds a match.
+  # Specifying multiple rules inside Key will be combined as OR
   Rules:
     - Key:
+        # Using a regular expression for validation
+        # requires adding the `regex:` prefix
         - regex:.*
+      # What to do with the attribute if the rule is met
+      # Allow: see DefaultStrategy
       Strategy: unlink
 
 Gateway:
   GRPC:
     Enabled: true
+    # GRPC address to listen to, the search engine will 
+    # send a request to this address
     Address: 0.0.0.0:50051
+    # GRPC Gateway for otel proxy operation if sending occurs via http.
     Gateway: 0.0.0.0:4318
   Debug:
     Enabled: true
+    # pprof
     Address: localhost:6060
