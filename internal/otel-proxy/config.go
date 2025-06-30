@@ -33,8 +33,30 @@ func parseRule(r []ConfigRule) ([]Rule, error) {
 			}
 		}
 
+		var valueFn []ruleValueFn
+		for _, v := range r.Value {
+			parts := strings.SplitN(v, ":", 2)
+			if len(parts) != 2 {
+				return nil, fmt.Errorf("rule #%d: value `%s`: invalid format", i, v)
+			}
+
+			switch parts[0] {
+			case "len_ge":
+				r, err := ruleLenGE(parts[1])
+				if err != nil {
+					return nil, fmt.Errorf("rule #%d: value `%s`: %w", i, v, err)
+				}
+
+				valueFn = append(valueFn, r)
+			default:
+				return nil, fmt.Errorf("rule #%d: key `%s`: unknown `%s`", i, v, parts[0])
+			}
+
+		}
+
 		rules = append(rules, Rule{
 			key:      keyFn,
+			value:    valueFn,
 			strategy: strategy,
 		})
 	}
@@ -48,6 +70,8 @@ func parseStrategy(s string) (RuleStrategy, error) {
 		return RuleStrategyKeep, nil
 	case RuleStrategyUnlink:
 		return RuleStrategyUnlink, nil
+	case RuleStrategyRemove:
+		return RuleStrategyRemove, nil
 	default:
 		return "", fmt.Errorf("unknown `%s`", v)
 	}

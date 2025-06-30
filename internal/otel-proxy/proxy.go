@@ -30,20 +30,26 @@ type Config struct {
 }
 type ConfigRule struct {
 	Key      []string
+	Value    []string
 	Strategy string
 }
 
-type ruleKeyFn func(key string) bool
+type (
+	ruleKeyFn   func(v string) bool
+	ruleValueFn func(v *common.AnyValue) bool
+)
 
 type RuleStrategy string
 
 const (
 	RuleStrategyKeep   RuleStrategy = "keep"
 	RuleStrategyUnlink RuleStrategy = "unlink"
+	RuleStrategyRemove RuleStrategy = "remove"
 )
 
 type Rule struct {
 	key      []ruleKeyFn
+	value    []ruleValueFn
 	strategy RuleStrategy
 }
 
@@ -126,6 +132,8 @@ func (p *Proxy) Grep(ctx context.Context, res []*trace.ResourceSpans) (*otelcoll
 						}
 
 						event.Attributes = append(event.Attributes, eventAttribute)
+					case RuleStrategyRemove:
+						// remove
 					default: // RuleStrategyKeep
 						nextAttributes = append(nextAttributes, prevAttribute)
 					}
@@ -165,7 +173,11 @@ func (p *Proxy) Grep(ctx context.Context, res []*trace.ResourceSpans) (*otelcoll
 }
 
 func (p *Proxy) rule(kv *common.KeyValue) RuleStrategy {
-	ruleKey := func(fn []ruleKeyFn, k string) bool {
+	ruleKeyFn := func(fn []ruleKeyFn, k string) bool {
+		if len(fn) == 0 {
+			return true
+		}
+
 		for _, fn := range fn {
 			if fn(k) {
 				return true
@@ -175,8 +187,30 @@ func (p *Proxy) rule(kv *common.KeyValue) RuleStrategy {
 		return false
 	}
 
+	ruleValueFn := func(fn []ruleValueFn, v *common.AnyValue) bool {
+		if v == nil {
+			return false
+		}
+
+		if len(fn) == 0 {
+			return true
+		}
+
+		for _, fn := range fn {
+			if fn(v) {
+				return true
+			}
+		}
+
+		return false
+	}
+
 	for _, rule := range p.rules {
-		if !ruleKey(rule.key, kv.Key) {
+		if !ruleKeyFn(rule.key, kv.Key) {
+			continue
+		}
+
+		if !ruleValueFn(rule.value, kv.Value) {
 			continue
 		}
 
