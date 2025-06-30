@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"sync"
 
 	debug "github.com/tekig/clerk/internal/gateway/debug"
@@ -66,6 +67,19 @@ func NewSearcher() (*Searcher, error) {
 	var config SearcherConfig
 	if err := readConfig(&config); err != nil {
 		return nil, fmt.Errorf("read config: %w", err)
+	}
+
+	switch config.Logger.Format {
+	case "text", "":
+		slog.SetDefault(
+			slog.New(slog.NewTextHandler(os.Stdout, nil)),
+		)
+	case "json":
+		slog.SetDefault(
+			slog.New(slog.NewJSONHandler(os.Stdout, nil)),
+		)
+	default:
+		return nil, fmt.Errorf("unknow logger format `%s`", config.Logger.Format)
 	}
 
 	if config.Logger.Level != nil {

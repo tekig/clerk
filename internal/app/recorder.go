@@ -72,24 +72,24 @@ func NewRecorder() (*Recorder, error) {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
 
+	switch config.Logger.Format {
+	case "text", "":
+		slog.SetDefault(
+			slog.New(slog.NewTextHandler(os.Stdout, nil)),
+		)
+	case "json":
+		slog.SetDefault(
+			slog.New(slog.NewJSONHandler(os.Stdout, nil)),
+		)
+	default:
+		return nil, fmt.Errorf("unknow logger format `%s`", config.Logger.Format)
+	}
+
 	if config.Logger.Level != nil {
 		var level slog.Level
 
 		if err := level.UnmarshalText([]byte(*config.Logger.Level)); err != nil {
 			return nil, fmt.Errorf("unmarshal log level `%s`: %w", *config.Logger.Level, err)
-		}
-
-		switch config.Logger.Format {
-		case "text", "":
-			slog.SetDefault(
-				slog.New(slog.NewTextHandler(os.Stdout, nil)),
-			)
-		case "json":
-			slog.SetDefault(
-				slog.New(slog.NewJSONHandler(os.Stdout, nil)),
-			)
-		default:
-			return nil, fmt.Errorf("unknow logger format `%s`", config.Logger.Format)
 		}
 
 		slog.SetLogLoggerLevel(level)
