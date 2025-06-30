@@ -8,6 +8,8 @@ import (
 	"github.com/tekig/clerk/internal/uuid"
 )
 
+//go:generate mockgen -source=interface.go -package=mock -destination=mock/mock.go
+
 type Storage interface {
 	Blocks(ctx context.Context) ([]string, error)
 	Read(ctx context.Context, name string) (io.ReadCloser, error)

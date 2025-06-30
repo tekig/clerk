@@ -136,6 +136,10 @@ func (r *Recorder) Shutdown() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	if r.block.WritedSize() == 0 {
+		return nil
+	}
+
 	if err := r.export(context.Background(), r.block); err != nil {
 		return fmt.Errorf("export block: %w", err)
 	}
