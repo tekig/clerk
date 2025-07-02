@@ -141,7 +141,7 @@ func NewSearcher() (*Searcher, error) {
 	}
 
 	var grpcGateway *sgrpc.Searcher
-	if config.Gateway.Debug != nil && config.Gateway.Debug.Enabled {
+	if config.Gateway.GRPC != nil && config.Gateway.GRPC.Enabled {
 		g, err := sgrpc.NewSearcher(sgrpc.SearcherConfig{
 			Searcher: s,
 			Address:  config.Gateway.GRPC.Address,

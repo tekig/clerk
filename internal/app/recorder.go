@@ -172,7 +172,7 @@ func NewRecorder() (*Recorder, error) {
 	}
 
 	var grpcGateway *sgrpc.Recorder
-	if config.Gateway.Debug != nil && config.Gateway.Debug.Enabled {
+	if config.Gateway.GRPC != nil && config.Gateway.GRPC.Enabled {
 		g, err := sgrpc.NewRecorder(sgrpc.RecorderConfig{
 			Recorder:    r,
 			OTELProxy:   proxy,

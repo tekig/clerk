@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/tekig/clerk/internal/logger"
@@ -16,6 +17,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/reflection"
 )
 
@@ -46,6 +48,13 @@ func NewRecorder(config RecorderConfig) (*Recorder, error) {
 			grpc.ChainUnaryInterceptor(
 				logger.UnaryServerInterceptor(),
 			),
+			grpc.KeepaliveParams(keepalive.ServerParameters{
+				MaxConnectionIdle:     2 * time.Minute,
+				MaxConnectionAge:      5 * time.Minute,
+				MaxConnectionAgeGrace: 2 * time.Minute,
+				Time:                  5 * time.Minute,
+				Timeout:               20 * time.Second,
+			}),
 		),
 		grpcAddress: config.GRPCAddress,
 	}
