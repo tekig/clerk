@@ -6,6 +6,11 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/prometheus"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 )
 
 type Debug struct {
@@ -23,6 +28,18 @@ func NewDebug(config DebugConfig) (*Debug, error) {
 			Handler: http.DefaultServeMux,
 		},
 	}
+
+	exporter, err := prometheus.New()
+	if err != nil {
+		return nil, fmt.Errorf("exporter prom: %w", err)
+	}
+
+	provider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(exporter),
+	)
+	otel.SetMeterProvider(provider)
+
+	http.Handle("/metrics", promhttp.Handler())
 
 	return g, nil
 }

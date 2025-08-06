@@ -3,11 +3,16 @@ package otelproxy
 import (
 	"context"
 	"fmt"
+	"log"
+	"sync"
 
 	"github.com/tekig/clerk/internal/pb"
 	"github.com/tekig/clerk/internal/recorder"
 	"github.com/tekig/clerk/internal/repository/http"
 	"github.com/tekig/clerk/internal/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	otelcollector "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	common "go.opentelemetry.io/proto/otlp/common/v1"
 	trace "go.opentelemetry.io/proto/otlp/trace/v1"
@@ -47,6 +52,11 @@ const (
 	RuleStrategyRemove RuleStrategy = "remove"
 )
 
+var (
+	metricInit       sync.Once
+	meterSpanCounter metric.Int64Counter
+)
+
 type Rule struct {
 	key      []ruleKeyFn
 	value    []ruleValueFn
@@ -54,6 +64,16 @@ type Rule struct {
 }
 
 func New(c Config) (*Proxy, error) {
+	metricInit.Do(func() {
+		meter := otel.Meter("otel_proxy")
+		counter, err := meter.Int64Counter("span_count")
+		if err != nil {
+			log.Fatalf("init meter span_count: %s", err.Error())
+		}
+
+		meterSpanCounter = counter
+	})
+
 	target, err := http.NewOTELCollector(c.Target)
 	if err != nil {
 		return nil, fmt.Errorf("target collector: %w", err)
@@ -81,7 +101,22 @@ func New(c Config) (*Proxy, error) {
 func (p *Proxy) Grep(ctx context.Context, res []*trace.ResourceSpans) (*otelcollector.ExportTraceServiceResponse, error) {
 	var events []*pb.Event
 	for _, prevRes := range res {
+		var serviceName string
+		for _, kv := range prevRes.GetResource().GetAttributes() {
+			if kv.GetKey() == "service.name" {
+				serviceName = kv.GetValue().GetStringValue()
+			}
+		}
+
 		for _, prevScope := range prevRes.ScopeSpans {
+			meterSpanCounter.Add(
+				ctx,
+				int64(len(prevScope.Spans)),
+				metric.WithAttributes(
+					attribute.String("service.name", serviceName),
+				),
+			)
+
 			for _, prevSpan := range prevScope.Spans {
 				id := uuid.New()
 				var event = &pb.Event{
