@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"sync"
+	"time"
 
 	"github.com/tekig/clerk/internal/entity"
 	"github.com/tekig/clerk/internal/pb"
@@ -24,10 +25,13 @@ type Block struct {
 	chunk        *Chunk
 	size         int
 	maxChunkSize int
-	closed       bool
-	buf          []byte
-	wmu          sync.Mutex   // mutex from write
-	rmu          sync.RWMutex // mutex from read
+	// Maximum time that data can be in the buffer.
+	// If there are few events, the last event may be displayed as not found.
+	maxBufDuration *time.Ticker
+	closed         bool
+	buf            []byte
+	wmu            sync.Mutex   // mutex from write
+	rmu            sync.RWMutex // mutex from read
 }
 
 type Config struct {
@@ -51,14 +55,27 @@ func NewBlock(dstPath string, options ...BlockOption) (*Block, error) {
 	}
 
 	block := &Block{
-		path:         dstPath,
-		block:        data,
-		blockWriter:  NewWriteCounter(data),
-		index:        NewBloom(),
-		chunk:        NewChunk(data),
-		maxChunkSize: 256 * 1024 * 1024, // 256MB
-		buf:          make([]byte, 0, 4*1024*1024),
+		path:           dstPath,
+		block:          data,
+		blockWriter:    NewWriteCounter(data),
+		index:          NewBloom(),
+		chunk:          NewChunk(data),
+		maxChunkSize:   256 * 1024 * 1024, // 256MB
+		maxBufDuration: time.NewTicker(30 * time.Second),
+		buf:            make([]byte, 0, 4*1024*1024),
 	}
+
+	go func() {
+		for range block.maxBufDuration.C {
+			if block.wmu.TryLock() {
+				if block.closed {
+					break
+				}
+				_ = block.chunk.compress.Flush()
+				block.wmu.Unlock()
+			}
+		}
+	}()
 
 	for _, option := range options {
 		option(block)
@@ -79,6 +96,8 @@ func (b *Block) Close() error {
 	}
 
 	b.closed = true
+
+	b.maxBufDuration.Stop()
 
 	if err := b.closeChunk(); err != nil {
 		return fmt.Errorf("close last chunk: %w", err)

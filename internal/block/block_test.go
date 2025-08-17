@@ -17,7 +17,7 @@ func Test(t *testing.T) {
 }
 
 func test() error {
-	if err := os.Mkdir("tmp", os.ModePerm); err != nil {
+	if err := os.MkdirAll("tmp", os.ModePerm); err != nil {
 		return fmt.Errorf("tmp: %w", err)
 	}
 

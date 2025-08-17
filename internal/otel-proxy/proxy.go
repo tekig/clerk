@@ -101,7 +101,7 @@ func New(c Config) (*Proxy, error) {
 func (p *Proxy) Grep(ctx context.Context, res []*trace.ResourceSpans) (*otelcollector.ExportTraceServiceResponse, error) {
 	var events []*pb.Event
 	for _, prevRes := range res {
-		var serviceName string
+		var serviceName = "unknown"
 		for _, kv := range prevRes.GetResource().GetAttributes() {
 			if kv.GetKey() == "service.name" {
 				serviceName = kv.GetValue().GetStringValue()
