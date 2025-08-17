@@ -109,14 +109,6 @@ func (p *Proxy) Grep(ctx context.Context, res []*trace.ResourceSpans) (*otelcoll
 		}
 
 		for _, prevScope := range prevRes.ScopeSpans {
-			meterSpanCounter.Add(
-				ctx,
-				int64(len(prevScope.Spans)),
-				metric.WithAttributes(
-					attribute.String("service.name", serviceName),
-				),
-			)
-
 			for _, prevSpan := range prevScope.Spans {
 				id := uuid.New()
 				var event = &pb.Event{
@@ -173,6 +165,14 @@ func (p *Proxy) Grep(ctx context.Context, res []*trace.ResourceSpans) (*otelcoll
 						nextAttributes = append(nextAttributes, prevAttribute)
 					}
 				}
+				meterSpanCounter.Add(
+					ctx,
+					1,
+					metric.WithAttributes(
+						attribute.String("service.name", serviceName),
+						attribute.String("span.name", prevSpan.Name),
+					),
+				)
 				if len(event.Attributes) > 0 {
 					nextAttributes = append(nextAttributes,
 						&common.KeyValue{
