@@ -233,5 +233,9 @@ func (r *Searcher) Shutdown() error {
 		}
 	}
 
+	if err := r.searcher.Close(); err != nil {
+		return fmt.Errorf("searcher close: %w", err)
+	}
+
 	return nil
 }

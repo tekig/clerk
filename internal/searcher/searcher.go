@@ -3,8 +3,10 @@ package searcher
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
+	"os"
 	"path"
 	"sync"
 	"time"
@@ -20,8 +22,9 @@ import (
 
 type Searcher struct {
 	recorders func() ([]repository.Recorder, error)
-	indexs    map[string]*block.Bloom
+	indexs    map[string]func() (*block.Bloom, error)
 	cache     repository.Cache
+	tmp       string
 
 	mu      sync.Mutex
 	storage repository.Storage
@@ -61,10 +64,16 @@ func Readers(address []string) Option {
 }
 
 func NewSearcher(storage repository.Storage, cache repository.Cache, options ...Option) (*Searcher, error) {
+	tmp, err := os.MkdirTemp("", "index-*")
+	if err != nil {
+		return nil, fmt.Errorf("index mkdir temp: %w", err)
+	}
+
 	s := &Searcher{
 		storage: storage,
 		cache:   cache,
-		indexs:  make(map[string]*block.Bloom),
+		indexs:  make(map[string]func() (*block.Bloom, error)),
+		tmp:     tmp,
 		recorders: func() ([]repository.Recorder, error) {
 			return nil, nil
 		},
@@ -99,6 +108,10 @@ func NewSearcher(storage repository.Storage, cache repository.Cache, options ...
 	return s, nil
 }
 
+func (s *Searcher) Close() error {
+	return os.RemoveAll(s.tmp)
+}
+
 func (s *Searcher) AppendBlock(ctx context.Context, name string) error {
 	r, err := s.storage.Read(ctx, path.Join(name, entity.NameIndex))
 	if err != nil {
@@ -106,13 +119,33 @@ func (s *Searcher) AppendBlock(ctx context.Context, name string) error {
 	}
 	defer r.Close()
 
-	index := block.NewBloom()
-	if err := index.Read(r); err != nil {
-		return fmt.Errorf("read index: %w", err)
+	fileName := path.Join(s.tmp, name)
+
+	f, err := os.Create(fileName)
+	if err != nil {
+		return fmt.Errorf("mkdir: %w", err)
+	}
+	defer f.Close()
+
+	if _, err := io.Copy(f, r); err != nil {
+		return fmt.Errorf("copy: %w", err)
 	}
 
 	s.mu.Lock()
-	s.indexs[name] = index
+	s.indexs[name] = func() (*block.Bloom, error) {
+		f, err := os.Open(fileName)
+		if err != nil {
+			return nil, fmt.Errorf("open: %w", err)
+		}
+		defer f.Close()
+
+		index := block.NewBloom()
+		if err := index.Read(f); err != nil {
+			return nil, fmt.Errorf("read index: %w", err)
+		}
+
+		return index, nil
+	}
 	s.mu.Unlock()
 
 	return nil
@@ -185,7 +218,15 @@ func (s *Searcher) search(ctx context.Context, id uuid.UUID) (*pb.Event, error) 
 	t2 := time.Now()
 	var candidats = map[string][]block.IndexPointer{}
 	var countCandidats int
-	for name, index := range s.indexs {
+	for name, indexFn := range s.indexs {
+		index, err := indexFn()
+		if err != nil {
+			attrs = append(attrs, slog.Group(
+				fmt.Sprintf("%s_index", name),
+				slog.String("error", err.Error()),
+			))
+		}
+
 		c := index.Search(id)
 		if len(c) > 0 {
 			countCandidats += len(c)
