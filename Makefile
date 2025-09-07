@@ -5,7 +5,7 @@ proto:
 		--go_opt=paths=source_relative \
 		--go-grpc_out=./internal/pb \
 		--go-grpc_opt=paths=source_relative \
-		api/clerk.proto api/trace.proto
+		api/clerk.proto
 
 build:
 	go build -o ./bin/hammer ./cmd/hammer

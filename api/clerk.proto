@@ -21,22 +21,19 @@ message Attribute {
 
 message Index {
     message Chunk {
+        message Mark {
+            int64 size = 1;
+            int64 offset = 2;
+        }
         repeated bytes ids = 1;
-        int64 size = 2;
-        int64 offset = 3;
+        Mark mark = 2;
     }
 
     repeated Chunk chunks = 1;
 }
 
 message Bloom {
-    message Chunk {
-        bytes bloom = 1;
-        int64 size = 2;
-        int64 offset = 3;
-    }
-    
-    repeated Chunk chunks = 1;
+    bytes bloom = 1;
 }
 
 

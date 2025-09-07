@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tekig/clerk/internal/block"
+	"github.com/tekig/clerk/internal/block2"
 	"github.com/tekig/clerk/internal/logger"
 	"github.com/tekig/clerk/internal/pb"
 	"github.com/tekig/clerk/internal/repository"
@@ -20,7 +20,7 @@ import (
 type Recorder struct {
 	mu sync.Mutex
 
-	block    *block.Block
+	block    *block2.Block
 	searcher repository.Searcher
 	exportes sync.WaitGroup
 
@@ -82,7 +82,7 @@ func (r *Recorder) Write(ctx context.Context, events []*pb.Event) error {
 	for _, event := range events {
 		if r.block.WritedSize() >= r.maxBlockSize {
 			r.exportes.Add(1)
-			go func(b *block.Block) {
+			go func(b *block2.Block) {
 				defer r.exportes.Done()
 
 				ctx, l := logger.NewLogger(context.Background())
@@ -91,7 +91,7 @@ func (r *Recorder) Write(ctx context.Context, events []*pb.Event) error {
 				err := r.export(ctx, b)
 
 				var attrs = []slog.Attr{
-					slog.Duration("duration", time.Since(n)),
+					slog.String("duration", time.Since(n).String()),
 				}
 
 				var level = slog.LevelInfo
@@ -111,7 +111,7 @@ func (r *Recorder) Write(ctx context.Context, events []*pb.Event) error {
 			r.block = b
 		}
 
-		if _, err := r.block.Write(event); err != nil {
+		if err := r.block.Write(event); err != nil {
 			return fmt.Errorf("write block: %w", err)
 		}
 	}
@@ -149,10 +149,10 @@ func (r *Recorder) Shutdown() error {
 	return nil
 }
 
-func (r *Recorder) newBlock() (*block.Block, error) {
-	var options []block.BlockOption
+func (r *Recorder) newBlock() (*block2.Block, error) {
+	var options []block2.BlockOption
 	if r.maxChunkSize != nil {
-		options = append(options, block.MaxChunkSize(*r.maxChunkSize))
+		options = append(options, block2.MaxChunkSize(*r.maxChunkSize))
 	}
 
 	path := path.Join(r.blocksDir, uuid.New().String())
@@ -160,7 +160,7 @@ func (r *Recorder) newBlock() (*block.Block, error) {
 		return nil, fmt.Errorf("mkdir block: %w", err)
 	}
 
-	b, err := block.NewBlock(path, options...)
+	b, err := block2.NewBlock(path, options...)
 	if err != nil {
 		return nil, fmt.Errorf("new block: %w", err)
 	}
@@ -168,7 +168,7 @@ func (r *Recorder) newBlock() (*block.Block, error) {
 	return b, nil
 }
 
-func (r *Recorder) export(ctx context.Context, block *block.Block) error {
+func (r *Recorder) export(ctx context.Context, block *block2.Block) error {
 	var attrs []slog.Attr
 
 	t1 := time.Now()
@@ -176,7 +176,7 @@ func (r *Recorder) export(ctx context.Context, block *block.Block) error {
 		return fmt.Errorf("close block: %w", err)
 	}
 	attrs = append(attrs,
-		slog.Duration("block_close", time.Since(t1)),
+		slog.String("block_close", time.Since(t1).String()),
 		slog.Int("block_origin_size", block.WritedSize()),
 		slog.Int("block_compressed_size", block.CompressedSize()),
 		slog.Float64("block_compressed_rate", float64(block.WritedSize())/float64(block.CompressedSize())),
@@ -186,7 +186,7 @@ func (r *Recorder) export(ctx context.Context, block *block.Block) error {
 	if err := r.storage.SaveBlock(ctx, block.Path()); err != nil {
 		return fmt.Errorf("save: %w", err)
 	}
-	attrs = append(attrs, slog.Duration("block_save", time.Since(t2)))
+	attrs = append(attrs, slog.String("block_save", time.Since(t2).String()))
 
 	if err := os.RemoveAll(block.Path()); err != nil {
 		return fmt.Errorf("remove block: %w", err)
@@ -196,7 +196,7 @@ func (r *Recorder) export(ctx context.Context, block *block.Block) error {
 	if err := r.searcher.AppendBlock(ctx, filepath.Base(block.Path())); err != nil {
 		return fmt.Errorf("append block: %w", err)
 	}
-	attrs = append(attrs, slog.Duration("search_notify", time.Since(t3)))
+	attrs = append(attrs, slog.String("search_notify", time.Since(t3).String()))
 
 	logger.WithAttrs(ctx, slog.Any("export", slog.GroupValue(attrs...)))
 
