@@ -28,7 +28,3 @@ func (c *Counter[T]) Origin() T {
 func (c *Counter[T]) Size() int {
 	return c.size
 }
-
-func (c *Counter[T]) Reset() {
-	c.size = 0
-}

@@ -30,6 +30,11 @@ func (s *Snappy[T]) Flush() error {
 	return s.snap.Flush()
 }
 
+// Set header snappy for decode
+func (s *Snappy[T]) Mark() {
+	s.snap.Reset(s.dst)
+}
+
 func (s *Snappy[T]) Origin() T {
 	return s.dst
 }

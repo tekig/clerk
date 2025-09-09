@@ -24,6 +24,7 @@ type Block struct {
 	blockWriter  *writer.Counter[*writer.Snappy[*writer.Counter[*os.File]]]
 	indexWriter  *os.File
 	currentIndex *pb.Index_Chunk
+	prevSize     int
 	count        int
 
 	wmu    sync.Mutex   // mutex from write
@@ -71,7 +72,7 @@ func NewBlock(dir string, options ...BlockOption) (*Block, error) {
 		},
 
 		maxBufDuration: time.NewTicker(30 * time.Second),
-		maxChunkSize:   256 * 1024 * 1024,
+		maxChunkSize:   64 * 1024 * 1024,
 	}
 
 	go func() {
@@ -87,6 +88,10 @@ func NewBlock(dir string, options ...BlockOption) (*Block, error) {
 		}
 	}()
 
+	for _, o := range options {
+		o(block)
+	}
+
 	return block, nil
 }
 
@@ -98,7 +103,7 @@ func (b *Block) Write(event *pb.Event) error {
 		return fmt.Errorf("block alredy closed")
 	}
 
-	if b.blockWriter.Size() > b.maxChunkSize {
+	if b.blockWriter.Size()-b.prevSize > b.maxChunkSize {
 		if err := b.nextChuck(); err != nil {
 			return fmt.Errorf("next chuck: %w", err)
 		}
@@ -281,9 +286,13 @@ func (b *Block) createBloom() error {
 }
 
 func (b *Block) nextChuck() error {
+	b.prevSize = b.blockWriter.Size()
+
 	if err := b.blockWriter.Origin().Flush(); err != nil {
 		return fmt.Errorf("flush block: %w", err)
 	}
+
+	b.blockWriter.Origin().Mark()
 
 	b.currentIndex.Mark.Size = int64(b.blockWriter.Origin().Origin().Size()) - b.currentIndex.Mark.Offset
 
@@ -294,7 +303,7 @@ func (b *Block) nextChuck() error {
 	b.currentIndex = &pb.Index_Chunk{
 		Mark: &pb.Index_Chunk_Mark{
 			Size:   -1,
-			Offset: int64(b.blockWriter.Origin().Origin().Size()) + 1,
+			Offset: int64(b.blockWriter.Origin().Origin().Size()),
 		},
 	}
 
