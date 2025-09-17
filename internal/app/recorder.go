@@ -9,6 +9,7 @@ import (
 
 	debug "github.com/tekig/clerk/internal/gateway/debug"
 	sgrpc "github.com/tekig/clerk/internal/gateway/grpc"
+	"github.com/tekig/clerk/internal/gateway/rest"
 	otelproxy "github.com/tekig/clerk/internal/otel-proxy"
 	"github.com/tekig/clerk/internal/recorder"
 	"github.com/tekig/clerk/internal/repository"
@@ -62,6 +63,7 @@ type Recorder struct {
 
 	debug *debug.Debug
 	grpc  *sgrpc.Recorder
+	http  *rest.Recorder
 
 	searcher repository.Searcher
 }
@@ -172,24 +174,35 @@ func NewRecorder() (*Recorder, error) {
 	}
 
 	var grpcGateway *sgrpc.Recorder
+	var restGateway *rest.Recorder
 	if config.Gateway.GRPC != nil && config.Gateway.GRPC.Enabled {
-		g, err := sgrpc.NewRecorder(sgrpc.RecorderConfig{
+		gg, err := sgrpc.NewRecorder(sgrpc.RecorderConfig{
 			Recorder:    r,
 			OTELProxy:   proxy,
 			GRPCAddress: config.Gateway.GRPC.Address,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("grpc gateway: %w", err)
+		}
+
+		grpcGateway = gg
+
+		gr, err := rest.NewRecorder(rest.RecorderConfig{
+			OTELProxy:   proxy,
 			HTTPAddress: config.Gateway.GRPC.Gateway,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("http gateway: %w", err)
 		}
 
-		grpcGateway = g
+		restGateway = gr
 	}
 
 	return &Recorder{
 		recorder: r,
 		debug:    debugGateway,
 		grpc:     grpcGateway,
+		http:     restGateway,
 		searcher: searcher,
 	}, nil
 }
@@ -211,13 +224,25 @@ func (r *Recorder) Run() (runErr error) {
 		}()
 	}
 
+	if r.http != nil {
+		go func() {
+			defer cancel()
+
+			if err := r.http.Run(); err != nil {
+				once.Do(func() {
+					runErr = fmt.Errorf("run http: %w", err)
+				})
+			}
+		}()
+	}
+
 	if r.debug != nil {
 		go func() {
 			defer cancel()
 
 			if err := r.debug.Run(); err != nil {
 				once.Do(func() {
-					runErr = fmt.Errorf("run http: %w", err)
+					runErr = fmt.Errorf("run debug: %w", err)
 				})
 			}
 		}()
@@ -231,13 +256,19 @@ func (r *Recorder) Run() (runErr error) {
 func (r *Recorder) Shutdown() error {
 	if r.debug != nil {
 		if err := r.debug.Shutdown(); err != nil {
-			return fmt.Errorf("shutdown http: %w", err)
+			return fmt.Errorf("shutdown debug: %w", err)
 		}
 	}
 
 	if r.grpc != nil {
 		if err := r.grpc.Shutdown(); err != nil {
 			return fmt.Errorf("shutdown grpc: %w", err)
+		}
+	}
+
+	if r.http != nil {
+		if err := r.http.Shutdown(); err != nil {
+			return fmt.Errorf("shutdown http: %w", err)
 		}
 	}
 

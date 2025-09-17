@@ -10,7 +10,7 @@ require (
 	github.com/bits-and-blooms/bloom v2.0.3+incompatible
 	github.com/golang/snappy v1.0.0
 	github.com/google/uuid v1.6.0
-	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.1
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.1 // indirect
 	github.com/labstack/echo/v4 v4.13.3
 	github.com/spf13/viper v1.20.0
 	github.com/stretchr/testify v1.10.0
@@ -19,7 +19,6 @@ require (
 	go.opentelemetry.io/otel/metric v1.37.0
 	go.opentelemetry.io/proto/otlp v1.7.0
 	go.uber.org/mock v0.5.2
-	golang.org/x/sync v0.15.0
 	google.golang.org/grpc v1.73.0
 	google.golang.org/protobuf v1.36.6
 )
@@ -27,6 +26,11 @@ require (
 require (
 	github.com/prometheus/client_golang v1.22.0
 	go.opentelemetry.io/otel/sdk/metric v1.37.0
+)
+
+require (
+	github.com/golang/protobuf v1.5.4 // indirect
+	google.golang.org/genproto v0.0.0-20241118233622-e639e219e697 // indirect
 )
 
 require (
@@ -39,6 +43,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc // indirect
+	github.com/grpc-ecosystem/grpc-gateway v1.16.0
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect

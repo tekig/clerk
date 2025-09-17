@@ -6,6 +6,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/tekig/clerk/internal/bytes"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -39,17 +40,6 @@ func Encode(m proto.Message, w io.Writer) error {
 	return nil
 }
 
-func resize(b []byte, l int) []byte {
-	if len(b) >= l {
-		return b[:l]
-	}
-
-	e := make([]byte, l-len(b))
-	b = append(b, e...)
-
-	return b
-}
-
 func Decode(m proto.Message, r io.Reader) error {
 	b := poolBuf.Get().([]byte)
 	defer func() {
@@ -57,12 +47,12 @@ func Decode(m proto.Message, r io.Reader) error {
 		poolBuf.Put(b[:0])
 	}()
 
-	b = resize(b, 8)
+	b = bytes.Resize(b, 8)
 	if _, err := io.ReadFull(r, b); err != nil {
 		return fmt.Errorf("read size: %w", err)
 	}
 
-	b = resize(b, int(binary.LittleEndian.Uint64(b)))
+	b = bytes.Resize(b, int(binary.LittleEndian.Uint64(b)))
 	if _, err := io.ReadFull(r, b); err != nil {
 		return fmt.Errorf("read data: %w", err)
 	}

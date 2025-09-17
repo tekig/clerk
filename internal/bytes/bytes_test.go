@@ -1,4 +1,4 @@
-package block2
+package bytes
 
 import "testing"
 
@@ -21,7 +21,7 @@ func Test_resize(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		got := resize(tt.b, tt.l)
+		got := Resize(tt.b, tt.l)
 		if len(got) != tt.l {
 			t.Errorf("resize() = %v, want %v", len(got), tt.l)
 		}
