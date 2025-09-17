@@ -12,6 +12,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/tekig/clerk/internal/bytes"
+	"github.com/tekig/clerk/internal/logger"
 	otelproxy "github.com/tekig/clerk/internal/otel-proxy"
 	tracev1 "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 )
@@ -30,8 +31,9 @@ type Recorder struct {
 }
 
 type RecorderConfig struct {
-	OTELProxy   *otelproxy.Proxy
-	HTTPAddress string
+	OTELProxy      *otelproxy.Proxy
+	HTTPAddress    string
+	MaxConcurrency int
 }
 
 func NewRecorder(config RecorderConfig) (*Recorder, error) {
@@ -46,10 +48,16 @@ func NewRecorder(config RecorderConfig) (*Recorder, error) {
 		address: config.HTTPAddress,
 	}
 
+	if config.MaxConcurrency <= 0 {
+		config.MaxConcurrency = 3
+	}
+
 	r.httpServer.HideBanner = true
+	r.httpServer.HidePort = true
 	r.httpServer.Use(
+		logger.EchoLogger(),
+		ConcurrencyLimiter(config.MaxConcurrency),
 		middleware.Recover(),
-		middleware.Logger(),
 	)
 
 	r.httpServer.POST("/v1/traces", r.Export)

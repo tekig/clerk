@@ -47,9 +47,10 @@ type RecorderConfig struct {
 	}
 	Gateway struct {
 		GRPC *struct {
-			Enabled bool
-			Address string
-			Gateway string
+			Enabled        bool
+			Address        string
+			Gateway        string
+			MaxConcurrency int
 		}
 		Debug *struct {
 			Enabled bool
@@ -188,8 +189,9 @@ func NewRecorder() (*Recorder, error) {
 		grpcGateway = gg
 
 		gr, err := rest.NewRecorder(rest.RecorderConfig{
-			OTELProxy:   proxy,
-			HTTPAddress: config.Gateway.GRPC.Gateway,
+			OTELProxy:      proxy,
+			HTTPAddress:    config.Gateway.GRPC.Gateway,
+			MaxConcurrency: config.Gateway.GRPC.MaxConcurrency,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("http gateway: %w", err)

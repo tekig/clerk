@@ -77,6 +77,8 @@ Gateway:
     Address: 0.0.0.0:50051
     # GRPC Gateway for otel proxy operation if sending occurs via http.
     Gateway: 0.0.0.0:4318
+    # Maximum number of concurrent requests. Any remaining requests will be queued.
+    MaxConcurrency: 3
   Debug:
     Enabled: true
     # pprof
