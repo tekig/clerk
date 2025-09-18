@@ -52,6 +52,7 @@ func NewRecorder(config RecorderConfig) (*Recorder, error) {
 		config.MaxConcurrency = 3
 	}
 
+	r.httpServer.Server.SetKeepAlivesEnabled(false)
 	r.httpServer.HideBanner = true
 	r.httpServer.HidePort = true
 	r.httpServer.Use(
