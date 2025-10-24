@@ -117,7 +117,7 @@ func (s *Searcher) Close() error {
 }
 
 func (s *Searcher) AppendBlock(ctx context.Context, name string) error {
-	r, err := s.storage.Read(ctx, path.Join(name, entity.NameBloom))
+	r, err := s.storage.Read(ctx, name, entity.NameBloom)
 	if err != nil {
 		return fmt.Errorf("read index: %w", err)
 	}
@@ -324,11 +324,10 @@ func (s *Searcher) searchIndexes(ctx context.Context, target uuid.UUID) (*string
 	}
 
 	return block, mark
-
 }
 
 func (s *Searcher) searchIndex(ctx context.Context, blockName string, target uuid.UUID) (*pb.Index_Chunk_Mark, error) {
-	r, err := s.storage.Read(ctx, path.Join(blockName, entity.NameIndex))
+	r, err := s.storage.Read(ctx, blockName, entity.NameIndex)
 	if err != nil {
 		return nil, fmt.Errorf("read: %w", err)
 	}
@@ -352,7 +351,7 @@ func (s *Searcher) searchIndex(ctx context.Context, blockName string, target uui
 }
 
 func (s *Searcher) searchChunk(ctx context.Context, blockName string, mark *pb.Index_Chunk_Mark, target uuid.UUID) (*pb.Event, error) {
-	f, err := s.storage.ReadRange(ctx, path.Join(blockName, entity.NameData), int(mark.Offset), int(mark.Size))
+	f, err := s.storage.ReadRange(ctx, blockName, entity.NameData, int(mark.Offset), int(mark.Size))
 	if err != nil {
 		return nil, fmt.Errorf("read chunk `%s`: %w", blockName, err)
 	}

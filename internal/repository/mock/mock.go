@@ -59,47 +59,48 @@ func (mr *MockStorageMockRecorder) Blocks(ctx any) *gomock.Call {
 }
 
 // Read mocks base method.
-func (m *MockStorage) Read(ctx context.Context, name string) (io.ReadCloser, error) {
+func (m *MockStorage) Read(ctx context.Context, block, name string) (io.ReadCloser, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Read", ctx, name)
+	ret := m.ctrl.Call(m, "Read", ctx, block, name)
 	ret0, _ := ret[0].(io.ReadCloser)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Read indicates an expected call of Read.
-func (mr *MockStorageMockRecorder) Read(ctx, name any) *gomock.Call {
+func (mr *MockStorageMockRecorder) Read(ctx, block, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Read", reflect.TypeOf((*MockStorage)(nil).Read), ctx, name)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Read", reflect.TypeOf((*MockStorage)(nil).Read), ctx, block, name)
 }
 
 // ReadRange mocks base method.
-func (m *MockStorage) ReadRange(ctx context.Context, name string, offset, size int) (io.ReadCloser, error) {
+func (m *MockStorage) ReadRange(ctx context.Context, block, name string, offset, size int) (io.ReadCloser, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadRange", ctx, name, offset, size)
+	ret := m.ctrl.Call(m, "ReadRange", ctx, block, name, offset, size)
 	ret0, _ := ret[0].(io.ReadCloser)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ReadRange indicates an expected call of ReadRange.
-func (mr *MockStorageMockRecorder) ReadRange(ctx, name, offset, size any) *gomock.Call {
+func (mr *MockStorageMockRecorder) ReadRange(ctx, block, name, offset, size any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadRange", reflect.TypeOf((*MockStorage)(nil).ReadRange), ctx, name, offset, size)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadRange", reflect.TypeOf((*MockStorage)(nil).ReadRange), ctx, block, name, offset, size)
 }
 
-// SaveBlock mocks base method.
-func (m *MockStorage) SaveBlock(ctx context.Context, dir string) error {
+// Write mocks base method.
+func (m *MockStorage) Write(ctx context.Context, block, name string) (io.WriteCloser, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SaveBlock", ctx, dir)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret := m.ctrl.Call(m, "Write", ctx, block, name)
+	ret0, _ := ret[0].(io.WriteCloser)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
-// SaveBlock indicates an expected call of SaveBlock.
-func (mr *MockStorageMockRecorder) SaveBlock(ctx, dir any) *gomock.Call {
+// Write indicates an expected call of Write.
+func (mr *MockStorageMockRecorder) Write(ctx, block, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveBlock", reflect.TypeOf((*MockStorage)(nil).SaveBlock), ctx, dir)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Write", reflect.TypeOf((*MockStorage)(nil).Write), ctx, block, name)
 }
 
 // MockRecorder is a mock of Recorder interface.

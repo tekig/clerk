@@ -11,7 +11,7 @@ import (
 	sgrpc "github.com/tekig/clerk/internal/gateway/grpc"
 	webui "github.com/tekig/clerk/internal/gateway/web-ui"
 	"github.com/tekig/clerk/internal/repository"
-	awss3 "github.com/tekig/clerk/internal/repository/aws-s3"
+	files3 "github.com/tekig/clerk/internal/repository/file-s3"
 	"github.com/tekig/clerk/internal/repository/mem"
 	"github.com/tekig/clerk/internal/searcher"
 )
@@ -95,7 +95,8 @@ func NewSearcher() (*Searcher, error) {
 	var storage repository.Storage
 	switch config.Storage.Type {
 	case "awss3":
-		s, err := awss3.NewStorage(awss3.StorageConfig{
+		s, err := files3.NewStorage(files3.StorageConfig{
+			TempDir:      os.TempDir(),
 			Endpoint:     config.Storage.S3.Endpoint,
 			Bucket:       config.Storage.S3.Bucket,
 			AccessKey:    config.Storage.S3.AccessKey,

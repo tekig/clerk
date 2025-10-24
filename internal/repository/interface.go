@@ -12,9 +12,10 @@ import (
 
 type Storage interface {
 	Blocks(ctx context.Context) ([]string, error)
-	Read(ctx context.Context, name string) (io.ReadCloser, error)
-	ReadRange(ctx context.Context, name string, offset, size int) (io.ReadCloser, error)
-	SaveBlock(ctx context.Context, dir string) error
+	Read(ctx context.Context, block, name string) (io.ReadCloser, error)
+	// size -1 reads the file completely
+	ReadRange(ctx context.Context, block, name string, offset, size int) (io.ReadCloser, error)
+	Write(ctx context.Context, block, name string) (io.WriteCloser, error)
 }
 
 type Recorder interface {

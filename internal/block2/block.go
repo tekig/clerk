@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"path"
 	"sync"
 	"time"
 
@@ -15,14 +13,16 @@ import (
 	"github.com/golang/snappy"
 	"github.com/tekig/clerk/internal/entity"
 	"github.com/tekig/clerk/internal/pb"
+	"github.com/tekig/clerk/internal/repository"
 	"github.com/tekig/clerk/internal/uuid"
 	"github.com/tekig/clerk/internal/writer"
 )
 
 type Block struct {
-	dir          string
-	blockWriter  *writer.Counter[*writer.Snappy[*writer.Counter[*os.File]]]
-	indexWriter  *os.File
+	id           string
+	storage      repository.Storage
+	blockWriter  *writer.Counter[*writer.Snappy[*writer.Counter[io.WriteCloser]]]
+	indexWriter  io.WriteCloser
 	currentIndex *pb.Index_Chunk
 	prevSize     int
 	count        int
@@ -45,25 +45,26 @@ func MaxChunkSize(size int) BlockOption {
 	}
 }
 
-func NewBlock(dir string, options ...BlockOption) (*Block, error) {
-	fblock, err := os.Create(path.Join(dir, entity.NameData))
+func NewBlock(s repository.Storage, id string, options ...BlockOption) (*Block, error) {
+	wblock, err := s.Write(context.Background(), id, entity.NameData)
 	if err != nil {
 		return nil, fmt.Errorf("create block: %w", err)
 	}
 
-	findex, err := os.Create(path.Join(dir, entity.NameIndex))
+	windex, err := s.Write(context.Background(), id, entity.NameIndex)
 	if err != nil {
 		return nil, fmt.Errorf("create index: %w", err)
 	}
 
 	block := &Block{
-		dir: dir,
+		storage: s,
+		id:      id,
 		blockWriter: writer.NewCounter(
 			writer.NewSnappy(
-				writer.NewCounter(fblock),
+				writer.NewCounter(wblock),
 			),
 		),
-		indexWriter: findex,
+		indexWriter: windex,
 		currentIndex: &pb.Index_Chunk{
 			Mark: &pb.Index_Chunk_Mark{
 				Size:   -1,
@@ -127,27 +128,18 @@ func (b *Block) Search(ctx context.Context, target uuid.UUID) (*pb.Event, error)
 		return nil, fmt.Errorf("block already closed")
 	}
 
-	mark, err := b.indexSearch(target)
+	mark, err := b.indexSearch(ctx, target)
 	if err != nil {
 		return nil, fmt.Errorf("index search: %w", err)
 	}
 
-	block, err := os.Open(path.Join(b.dir, entity.NameData))
+	block, err := b.storage.ReadRange(ctx, b.id, entity.NameData, int(mark.Offset), int(mark.Size))
 	if err != nil {
-		return nil, fmt.Errorf("open block: %w", err)
+		return nil, fmt.Errorf("read range: %w", err)
 	}
 	defer block.Close()
 
-	if _, err := block.Seek(mark.Offset, 0); err != nil {
-		return nil, fmt.Errorf("seek block: %w", err)
-	}
-
-	var r io.Reader = block
-	if mark.Size != -1 {
-		r = io.LimitReader(block, mark.Size)
-	}
-
-	snap := snappy.NewReader(r)
+	snap := snappy.NewReader(block)
 
 	for {
 		var event = &pb.Event{}
@@ -165,14 +157,14 @@ func (b *Block) Search(ctx context.Context, target uuid.UUID) (*pb.Event, error)
 	return nil, fmt.Errorf("nothing found in the specified mark")
 }
 
-func (b *Block) indexSearch(target uuid.UUID) (*pb.Index_Chunk_Mark, error) {
+func (b *Block) indexSearch(ctx context.Context, target uuid.UUID) (*pb.Index_Chunk_Mark, error) {
 	for _, id := range b.currentIndex.Ids {
 		if uuid.UUID(id) == target {
 			return b.currentIndex.Mark, nil
 		}
 	}
 
-	idx, err := os.Open(path.Join(b.dir, entity.NameIndex))
+	idx, err := b.storage.Read(ctx, b.id, entity.NameIndex)
 	if err != nil {
 		return nil, fmt.Errorf("open index: %w", err)
 	}
@@ -196,16 +188,16 @@ func (b *Block) indexSearch(target uuid.UUID) (*pb.Index_Chunk_Mark, error) {
 	return nil, entity.ErrNotFound
 }
 
+func (b *Block) ID() string {
+	return b.id
+}
+
 func (b *Block) WritedSize() int {
 	return b.blockWriter.Size()
 }
 
 func (b *Block) CompressedSize() int {
 	return b.blockWriter.Origin().Origin().Size()
-}
-
-func (b *Block) Path() string {
-	return b.dir
 }
 
 func (b *Block) Close() error {
@@ -235,19 +227,19 @@ func (b *Block) Close() error {
 		return fmt.Errorf("file close: %w", err)
 	}
 
-	if err := b.indexWriter.Close(); err != nil {
-		return fmt.Errorf("index close: %w", err)
+	if err := b.createBloom(context.Background()); err != nil {
+		return fmt.Errorf("create bloom: %w", err)
 	}
 
-	if err := b.createBloom(); err != nil {
-		return fmt.Errorf("create bloom: %w", err)
+	if err := b.indexWriter.Close(); err != nil {
+		return fmt.Errorf("index close: %w", err)
 	}
 
 	return nil
 }
 
-func (b *Block) createBloom() error {
-	idx, err := os.Open(path.Join(b.dir, entity.NameIndex))
+func (b *Block) createBloom(ctx context.Context) error {
+	idx, err := b.storage.Read(ctx, b.id, entity.NameIndex)
 	if err != nil {
 		return fmt.Errorf("open index: %w", err)
 	}
@@ -272,7 +264,7 @@ func (b *Block) createBloom() error {
 		return fmt.Errorf("conv bloom: %w", err)
 	}
 
-	bloom, err := os.Create(path.Join(b.dir, entity.NameBloom))
+	bloom, err := b.storage.Write(ctx, b.id, entity.NameBloom)
 	if err != nil {
 		return fmt.Errorf("create bloom: %w", err)
 	}

@@ -13,7 +13,7 @@ import (
 	otelproxy "github.com/tekig/clerk/internal/otel-proxy"
 	"github.com/tekig/clerk/internal/recorder"
 	"github.com/tekig/clerk/internal/repository"
-	awss3 "github.com/tekig/clerk/internal/repository/aws-s3"
+	files3 "github.com/tekig/clerk/internal/repository/file-s3"
 	rgrpc "github.com/tekig/clerk/internal/repository/grpc"
 )
 
@@ -101,7 +101,8 @@ func NewRecorder() (*Recorder, error) {
 	var storage repository.Storage
 	switch config.Storage.Type {
 	case "awss3":
-		s, err := awss3.NewStorage(awss3.StorageConfig{
+		s, err := files3.NewStorage(files3.StorageConfig{
+			TempDir:      os.TempDir(),
 			Endpoint:     config.Storage.S3.Endpoint,
 			Bucket:       config.Storage.S3.Bucket,
 			AccessKey:    config.Storage.S3.AccessKey,

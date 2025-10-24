@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -155,12 +153,7 @@ func (r *Recorder) newBlock() (*block2.Block, error) {
 		options = append(options, block2.MaxChunkSize(*r.maxChunkSize))
 	}
 
-	path := path.Join(r.blocksDir, uuid.New().String())
-	if err := os.Mkdir(path, os.ModePerm); err != nil {
-		return nil, fmt.Errorf("mkdir block: %w", err)
-	}
-
-	b, err := block2.NewBlock(path, options...)
+	b, err := block2.NewBlock(r.storage, uuid.New().String(), options...)
 	if err != nil {
 		return nil, fmt.Errorf("new block: %w", err)
 	}
@@ -183,20 +176,10 @@ func (r *Recorder) export(ctx context.Context, block *block2.Block) error {
 	)
 
 	t2 := time.Now()
-	if err := r.storage.SaveBlock(ctx, block.Path()); err != nil {
-		return fmt.Errorf("save: %w", err)
-	}
-	attrs = append(attrs, slog.String("block_save", time.Since(t2).String()))
-
-	if err := os.RemoveAll(block.Path()); err != nil {
-		return fmt.Errorf("remove block: %w", err)
-	}
-
-	t3 := time.Now()
-	if err := r.searcher.AppendBlock(ctx, filepath.Base(block.Path())); err != nil {
+	if err := r.searcher.AppendBlock(ctx, block.ID()); err != nil {
 		return fmt.Errorf("append block: %w", err)
 	}
-	attrs = append(attrs, slog.String("search_notify", time.Since(t3).String()))
+	attrs = append(attrs, slog.String("search_notify", time.Since(t2).String()))
 
 	logger.WithAttrs(ctx, slog.Any("export", slog.GroupValue(attrs...)))
 
