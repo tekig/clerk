@@ -2,6 +2,7 @@ package uuid
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -9,19 +10,28 @@ import (
 type UUID [16]byte
 
 func New() UUID {
-	return UUID(uuid.New())
+	return UUID(uuid.Must(uuid.NewV7()))
 }
 
 func (id UUID) String() string {
 	return uuid.UUID(id).String()
 }
 
-func Must(id UUID, err error) UUID {
-	if err != nil {
-		panic(fmt.Sprintf("must UUID: %s", err.Error()))
+func (id UUID) Time() time.Time {
+	if (id[6] & 0xF0) != 0x70 {
+		return time.Time{}
 	}
 
-	return id
+	var t int64
+
+	t |= int64(id[0]) << 40
+	t |= int64(id[1]) << 32
+	t |= int64(id[2]) << 24
+	t |= int64(id[3]) << 16
+	t |= int64(id[4]) << 8
+	t |= int64(id[5])
+
+	return time.UnixMilli(t)
 }
 
 func FromBytes(raw []byte) (UUID, error) {

@@ -239,27 +239,28 @@ func (x *Index) GetChunks() []*Index_Chunk {
 	return nil
 }
 
-type Bloom struct {
+type Filters struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Bloom         []byte                 `protobuf:"bytes,1,opt,name=bloom,proto3" json:"bloom,omitempty"`
+	TimeMillis    *Filters_TimeMillis    `protobuf:"bytes,2,opt,name=time_millis,json=timeMillis,proto3" json:"time_millis,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *Bloom) Reset() {
-	*x = Bloom{}
+func (x *Filters) Reset() {
+	*x = Filters{}
 	mi := &file_clerk_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *Bloom) String() string {
+func (x *Filters) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*Bloom) ProtoMessage() {}
+func (*Filters) ProtoMessage() {}
 
-func (x *Bloom) ProtoReflect() protoreflect.Message {
+func (x *Filters) ProtoReflect() protoreflect.Message {
 	mi := &file_clerk_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -271,14 +272,21 @@ func (x *Bloom) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use Bloom.ProtoReflect.Descriptor instead.
-func (*Bloom) Descriptor() ([]byte, []int) {
+// Deprecated: Use Filters.ProtoReflect.Descriptor instead.
+func (*Filters) Descriptor() ([]byte, []int) {
 	return file_clerk_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *Bloom) GetBloom() []byte {
+func (x *Filters) GetBloom() []byte {
 	if x != nil {
 		return x.Bloom
+	}
+	return nil
+}
+
+func (x *Filters) GetTimeMillis() *Filters_TimeMillis {
+	if x != nil {
+		return x.TimeMillis
 	}
 	return nil
 }
@@ -635,6 +643,58 @@ func (x *Index_Chunk_Mark) GetOffset() int64 {
 	return 0
 }
 
+type Filters_TimeMillis struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Start         int64                  `protobuf:"varint,1,opt,name=start,proto3" json:"start,omitempty"`
+	End           int64                  `protobuf:"varint,2,opt,name=end,proto3" json:"end,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Filters_TimeMillis) Reset() {
+	*x = Filters_TimeMillis{}
+	mi := &file_clerk_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Filters_TimeMillis) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Filters_TimeMillis) ProtoMessage() {}
+
+func (x *Filters_TimeMillis) ProtoReflect() protoreflect.Message {
+	mi := &file_clerk_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Filters_TimeMillis.ProtoReflect.Descriptor instead.
+func (*Filters_TimeMillis) Descriptor() ([]byte, []int) {
+	return file_clerk_proto_rawDescGZIP(), []int{3, 0}
+}
+
+func (x *Filters_TimeMillis) GetStart() int64 {
+	if x != nil {
+		return x.Start
+	}
+	return 0
+}
+
+func (x *Filters_TimeMillis) GetEnd() int64 {
+	if x != nil {
+		return x.End
+	}
+	return 0
+}
+
 var File_clerk_proto protoreflect.FileDescriptor
 
 const file_clerk_proto_rawDesc = "" +
@@ -659,9 +719,15 @@ const file_clerk_proto_rawDesc = "" +
 	"\x04mark\x18\x02 \x01(\v2\x1b.scribe.v1.Index.Chunk.MarkR\x04mark\x1a2\n" +
 	"\x04Mark\x12\x12\n" +
 	"\x04size\x18\x01 \x01(\x03R\x04size\x12\x16\n" +
-	"\x06offset\x18\x02 \x01(\x03R\x06offset\"\x1d\n" +
-	"\x05Bloom\x12\x14\n" +
-	"\x05bloom\x18\x01 \x01(\fR\x05bloom\"?\n" +
+	"\x06offset\x18\x02 \x01(\x03R\x06offset\"\x95\x01\n" +
+	"\aFilters\x12\x14\n" +
+	"\x05bloom\x18\x01 \x01(\fR\x05bloom\x12>\n" +
+	"\vtime_millis\x18\x02 \x01(\v2\x1d.scribe.v1.Filters.TimeMillisR\n" +
+	"timeMillis\x1a4\n" +
+	"\n" +
+	"TimeMillis\x12\x14\n" +
+	"\x05start\x18\x01 \x01(\x03R\x05start\x12\x10\n" +
+	"\x03end\x18\x02 \x01(\x03R\x03end\"?\n" +
 	"\x13CreateEventsRequest\x12(\n" +
 	"\x06events\x18\x01 \x03(\v2\x10.scribe.v1.EventR\x06events\"\x16\n" +
 	"\x14CreateEventsResponse\"\x1f\n" +
@@ -691,12 +757,12 @@ func file_clerk_proto_rawDescGZIP() []byte {
 	return file_clerk_proto_rawDescData
 }
 
-var file_clerk_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_clerk_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_clerk_proto_goTypes = []any{
 	(*Event)(nil),                // 0: scribe.v1.Event
 	(*Attribute)(nil),            // 1: scribe.v1.Attribute
 	(*Index)(nil),                // 2: scribe.v1.Index
-	(*Bloom)(nil),                // 3: scribe.v1.Bloom
+	(*Filters)(nil),              // 3: scribe.v1.Filters
 	(*CreateEventsRequest)(nil),  // 4: scribe.v1.CreateEventsRequest
 	(*CreateEventsResponse)(nil), // 5: scribe.v1.CreateEventsResponse
 	(*SearchRequest)(nil),        // 6: scribe.v1.SearchRequest
@@ -705,26 +771,28 @@ var file_clerk_proto_goTypes = []any{
 	(*AppendBlockResponse)(nil),  // 9: scribe.v1.AppendBlockResponse
 	(*Index_Chunk)(nil),          // 10: scribe.v1.Index.Chunk
 	(*Index_Chunk_Mark)(nil),     // 11: scribe.v1.Index.Chunk.Mark
+	(*Filters_TimeMillis)(nil),   // 12: scribe.v1.Filters.TimeMillis
 }
 var file_clerk_proto_depIdxs = []int32{
 	1,  // 0: scribe.v1.Event.attributes:type_name -> scribe.v1.Attribute
 	10, // 1: scribe.v1.Index.chunks:type_name -> scribe.v1.Index.Chunk
-	0,  // 2: scribe.v1.CreateEventsRequest.events:type_name -> scribe.v1.Event
-	0,  // 3: scribe.v1.SearchResponse.event:type_name -> scribe.v1.Event
-	11, // 4: scribe.v1.Index.Chunk.mark:type_name -> scribe.v1.Index.Chunk.Mark
-	4,  // 5: scribe.v1.Recorder.CreateEvents:input_type -> scribe.v1.CreateEventsRequest
-	6,  // 6: scribe.v1.Recorder.Search:input_type -> scribe.v1.SearchRequest
-	8,  // 7: scribe.v1.Searcher.AppendBlock:input_type -> scribe.v1.AppendBlockRequest
-	6,  // 8: scribe.v1.Searcher.Search:input_type -> scribe.v1.SearchRequest
-	5,  // 9: scribe.v1.Recorder.CreateEvents:output_type -> scribe.v1.CreateEventsResponse
-	7,  // 10: scribe.v1.Recorder.Search:output_type -> scribe.v1.SearchResponse
-	9,  // 11: scribe.v1.Searcher.AppendBlock:output_type -> scribe.v1.AppendBlockResponse
-	7,  // 12: scribe.v1.Searcher.Search:output_type -> scribe.v1.SearchResponse
-	9,  // [9:13] is the sub-list for method output_type
-	5,  // [5:9] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	12, // 2: scribe.v1.Filters.time_millis:type_name -> scribe.v1.Filters.TimeMillis
+	0,  // 3: scribe.v1.CreateEventsRequest.events:type_name -> scribe.v1.Event
+	0,  // 4: scribe.v1.SearchResponse.event:type_name -> scribe.v1.Event
+	11, // 5: scribe.v1.Index.Chunk.mark:type_name -> scribe.v1.Index.Chunk.Mark
+	4,  // 6: scribe.v1.Recorder.CreateEvents:input_type -> scribe.v1.CreateEventsRequest
+	6,  // 7: scribe.v1.Recorder.Search:input_type -> scribe.v1.SearchRequest
+	8,  // 8: scribe.v1.Searcher.AppendBlock:input_type -> scribe.v1.AppendBlockRequest
+	6,  // 9: scribe.v1.Searcher.Search:input_type -> scribe.v1.SearchRequest
+	5,  // 10: scribe.v1.Recorder.CreateEvents:output_type -> scribe.v1.CreateEventsResponse
+	7,  // 11: scribe.v1.Recorder.Search:output_type -> scribe.v1.SearchResponse
+	9,  // 12: scribe.v1.Searcher.AppendBlock:output_type -> scribe.v1.AppendBlockResponse
+	7,  // 13: scribe.v1.Searcher.Search:output_type -> scribe.v1.SearchResponse
+	10, // [10:14] is the sub-list for method output_type
+	6,  // [6:10] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_clerk_proto_init() }
@@ -744,7 +812,7 @@ func file_clerk_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_clerk_proto_rawDesc), len(file_clerk_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   12,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

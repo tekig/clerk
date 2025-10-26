@@ -26,6 +26,7 @@ type Block struct {
 	currentIndex *pb.Index_Chunk
 	prevSize     int
 	count        int
+	start        time.Time
 
 	wmu    sync.Mutex   // mutex from write
 	rmu    sync.RWMutex // mutex from read
@@ -71,6 +72,7 @@ func NewBlock(s repository.Storage, id string, options ...BlockOption) (*Block, 
 				Offset: 0,
 			},
 		},
+		start: time.Now(),
 
 		maxBufDuration: time.NewTicker(30 * time.Second),
 		maxChunkSize:   64 * 1024 * 1024,
@@ -270,7 +272,13 @@ func (b *Block) createBloom(ctx context.Context) error {
 	}
 	defer bloom.Close()
 
-	if err := Encode(&pb.Bloom{Bloom: buf.Bytes()}, bloom); err != nil {
+	if err := Encode(&pb.Filters{
+		Bloom: buf.Bytes(),
+		TimeMillis: &pb.Filters_TimeMillis{
+			Start: b.start.UnixMilli(),
+			End:   time.Now().UnixMilli(),
+		},
+	}, bloom); err != nil {
 		return fmt.Errorf("write bloom: %w", err)
 	}
 

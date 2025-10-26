@@ -26,7 +26,7 @@ import (
 
 type Searcher struct {
 	recorders func() ([]repository.Recorder, error)
-	blooms    map[string]func() (*bloom.BloomFilter, error)
+	filters   map[string]filters
 	cache     repository.Cache
 	tmp       string
 
@@ -76,7 +76,7 @@ func NewSearcher(storage repository.Storage, cache repository.Cache, options ...
 	s := &Searcher{
 		storage: storage,
 		cache:   cache,
-		blooms:  make(map[string]func() (*bloom.BloomFilter, error)),
+		filters: make(map[string]filters),
 		tmp:     tmp,
 		recorders: func() ([]repository.Recorder, error) {
 			return nil, nil
@@ -123,6 +123,16 @@ func (s *Searcher) AppendBlock(ctx context.Context, name string) error {
 	}
 	defer r.Close()
 
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return fmt.Errorf("read filters: %w", err)
+	}
+
+	var pbFilters = &pb.Filters{}
+	if err := block2.Decode(pbFilters, bytes.NewReader(data)); err != nil {
+		return fmt.Errorf("decode filters: %w", err)
+	}
+
 	fileName := path.Join(s.tmp, name)
 
 	f, err := os.Create(fileName)
@@ -131,31 +141,37 @@ func (s *Searcher) AppendBlock(ctx context.Context, name string) error {
 	}
 	defer f.Close()
 
-	if _, err := io.Copy(f, r); err != nil {
-		return fmt.Errorf("copy: %w", err)
+	if _, err := f.Write(data); err != nil {
+		return fmt.Errorf("copy to local storage: %w", err)
 	}
 
 	s.mu.Lock()
-	s.blooms[name] = func() (*bloom.BloomFilter, error) {
-		f, err := os.Open(fileName)
-		if err != nil {
-			return nil, fmt.Errorf("open: %w", err)
-		}
-		defer f.Close()
+	defer s.mu.Unlock()
+	s.filters[name] = filters{
+		Bloom: func() (*bloom.BloomFilter, error) {
+			f, err := os.Open(fileName)
+			if err != nil {
+				return nil, fmt.Errorf("open: %w", err)
+			}
+			defer f.Close()
 
-		var data = &pb.Bloom{}
-		if err := block2.Decode(data, f); err != nil {
-			return nil, fmt.Errorf("decode message: %w", err)
-		}
+			var data = &pb.Filters{}
+			if err := block2.Decode(data, f); err != nil {
+				return nil, fmt.Errorf("decode message: %w", err)
+			}
 
-		bl := &bloom.BloomFilter{}
-		if _, err := bl.ReadFrom(bytes.NewBuffer(data.Bloom)); err != nil {
-			return nil, fmt.Errorf("decode bloom: %w", err)
-		}
+			bl := &bloom.BloomFilter{}
+			if _, err := bl.ReadFrom(bytes.NewBuffer(data.Bloom)); err != nil {
+				return nil, fmt.Errorf("decode bloom: %w", err)
+			}
 
-		return bl, nil
+			return bl, nil
+		},
+		Time: timeRange{
+			Start: time.UnixMilli(pbFilters.GetTimeMillis().Start),
+			End:   time.UnixMilli(pbFilters.GetTimeMillis().End),
+		},
 	}
-	s.mu.Unlock()
 
 	return nil
 }
@@ -213,33 +229,59 @@ func (s *Searcher) search(ctx context.Context, id uuid.UUID) (*pb.Event, error) 
 	return event, nil
 }
 
-func (s *Searcher) searchBlooms(ctx context.Context, target uuid.UUID) []string {
+func (s *Searcher) searchFilters(ctx context.Context, target uuid.UUID) []string {
 	var attrs []slog.Attr
 	defer func() {
 		logger.WithAttrs(ctx, slog.Any("blooms", slog.GroupValue(attrs...)))
 	}()
 
-	t2 := time.Now()
-	var candidats []string
-	for blockName, getBloom := range s.blooms {
-		bl, err := getBloom()
+	var (
+		candidats      []string
+		candidatsTime  int
+		candidatsBloom int
+		bloomLoadDur   time.Duration
+		t1             = time.Now()
+	)
+	for blockName, filters := range s.filters {
+		// support old uuids that do not have time component
+		if target.Time() != filters.Time.Start {
+			if filters.Time.Start.After(target.Time()) || filters.Time.End.Before(target.Time()) {
+				continue
+			}
+		}
+		candidatsTime++
+
+		t2 := time.Now()
+		bl, err := filters.Bloom()
 		if err != nil {
 			attrs = append(attrs, slog.Group(
 				blockName,
-				slog.String("error", err.Error()),
+				slog.String("error", fmt.Errorf("load bloom: %w", err).Error()),
 			))
+			continue
 		}
+		bloomLoadDur += time.Since(t2)
 
 		if bl.Test(target[:]) {
 			candidats = append(candidats, blockName)
+			candidatsBloom++
 		}
 	}
 	attrs = append(
 		attrs,
 		slog.Group(
-			"bloom",
-			slog.String("duration", time.Since(t2).String()),
-			slog.Int("candidats", len(candidats)),
+			"filters",
+			slog.Int("candidats_total", len(s.filters)),
+			slog.String("duration_total", time.Since(t1).String()),
+			slog.Group(
+				"time",
+				slog.Int("candidats", candidatsTime),
+			),
+			slog.Group(
+				"bloom",
+				slog.String("duration_load", bloomLoadDur.String()),
+				slog.Int("candidats", candidatsBloom),
+			),
 		),
 	)
 
@@ -294,7 +336,7 @@ func (s *Searcher) searchIndexes(ctx context.Context, target uuid.UUID) (*string
 
 	var mark *pb.Index_Chunk_Mark
 	var block *string
-	for _, blockName := range s.searchBlooms(ctx, target) {
+	for _, blockName := range s.searchFilters(ctx, target) {
 		var attrGroup []any
 		t1 := time.Now()
 
