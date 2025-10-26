@@ -2,8 +2,9 @@
 A lightweight key-value store that writes data to S3 with infrequent read support.
 
 ## Feature
-- Stores data in S3 (or compatible systems like MinIO)
+- Stores data in S3 (or compatible systems)
 - Optimized for frequent writes and rare reads
+- Supports storing medium-sized objects (from hundreds of bytes up to several megabytes) with a total dataset size in the terabyte range. (theoretically not limited to terabytes)
 
 ## Recorder
 Recorder is responsible for collecting data and writing it to S3. It can be run with multiple replicas.
