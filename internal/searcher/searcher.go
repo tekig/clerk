@@ -168,8 +168,8 @@ func (s *Searcher) AppendBlock(ctx context.Context, name string) error {
 			return bl, nil
 		},
 		Time: timeRange{
-			Start: time.UnixMilli(pbFilters.GetTimeMillis().Start),
-			End:   time.UnixMilli(pbFilters.GetTimeMillis().End),
+			Start: time.UnixMilli(pbFilters.GetTimeMillis().GetStart()),
+			End:   time.UnixMilli(pbFilters.GetTimeMillis().GetEnd()),
 		},
 	}
 
