@@ -11,8 +11,6 @@ Docker images are available for multiple platforms:
 - Linux AMD64
 - Linux ARM64
 
-Windows binaries are available as artifacts from the [GitHub Actions workflow](https://github.com/tekig/clerk/actions).
-
 ## Recorder
 Recorder is responsible for collecting data and writing it to S3. It can be run with multiple replicas.
 
