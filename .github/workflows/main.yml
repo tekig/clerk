@@ -76,8 +76,32 @@ jobs:
         uses: docker/build-push-action@0565240e2d4ab88bba5387d719585280857ece09 # v5.0.0
         with:
           context: .
+          platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.23'
+
+      - name: Build Windows binaries
+        run: |
+          go build -o bin/hammer.exe ./cmd/hammer
+          go build -o bin/recorder.exe ./cmd/recorder
+          go build -o bin/searcher.exe ./cmd/searcher
+
+      - name: Upload Windows binaries
+        uses: actions/upload-artifact@v3
+        with:
+          name: windows-binaries
+          path: bin/*.exe
