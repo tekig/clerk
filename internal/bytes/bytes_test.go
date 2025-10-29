@@ -27,3 +27,11 @@ func Test_resize(t *testing.T) {
 		}
 	}
 }
+
+func Benchmark_resize(b *testing.B) {
+	var p = make([]byte, 0, 4*1024*1024)
+	for range b.N {
+		n := Resize(p, 8000)
+		_ = n
+	}
+}

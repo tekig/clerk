@@ -3,14 +3,14 @@ package bytes
 import "io"
 
 func Resize(b []byte, l int) []byte {
-	if len(b) >= l {
+	if cap(b) >= l {
 		return b[:l]
 	}
 
-	e := make([]byte, l-len(b))
+	e := make([]byte, l-cap(b))
 	b = append(b, e...)
 
-	return b
+	return b[:l]
 }
 
 func ReadAll(r io.Reader, b []byte) ([]byte, error) {
