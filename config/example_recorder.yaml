@@ -15,6 +15,22 @@ Storage:
     Bucket: bucket
     AccessKey: access_key
     AccessSecret: access_secret
+    Uploader:
+      # The size of each file part to be uploaded.
+      #
+      # Determines how large each chunk of a file will be when performing multipart uploads.
+      #
+      # See more: https://pkg.go.dev/github.com/aws/aws-sdk-go/service/s3/s3manager#Uploader
+      # Allow unit: MiB
+      # Default: 5MiB
+      PartSize: 5MiB
+      # The number of concurrent upload threads or processes.
+      #
+      # Increasing this value can speed up uploads by sending multiple parts in parallel.
+      #
+      # See more: https://pkg.go.dev/github.com/aws/aws-sdk-go/service/s3/s3manager#Uploader
+      # Default: 5
+      Concurrency: 5
 
 Searcher:
   # Searcher component address

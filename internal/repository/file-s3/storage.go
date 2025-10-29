@@ -19,9 +19,12 @@ import (
 )
 
 type Storage struct {
-	tmp     string
-	bucket  string
-	session *session.Session
+	tmp        string
+	bucket     string
+	session    *session.Session
+	uploader   *s3manager.Uploader
+	downloader *s3manager.Downloader
+	lister     *s3.S3
 }
 
 type StorageConfig struct {
@@ -30,6 +33,12 @@ type StorageConfig struct {
 	Bucket       string
 	AccessKey    string
 	AccessSecret string
+	Upload       UploadConfig
+}
+
+type UploadConfig struct {
+	PartSize    int
+	Concurrency int
 }
 
 func NewStorage(c StorageConfig) (*Storage, error) {
@@ -47,13 +56,17 @@ func NewStorage(c StorageConfig) (*Storage, error) {
 		tmp:     c.TempDir,
 		bucket:  c.Bucket,
 		session: sess,
+		uploader: s3manager.NewUploader(sess, func(u *s3manager.Uploader) {
+			u.PartSize = int64(c.Upload.PartSize)
+			u.Concurrency = c.Upload.Concurrency
+		}),
+		downloader: s3manager.NewDownloader(sess),
+		lister:     s3.New(sess),
 	}, nil
 }
 
 func (s *Storage) Blocks(ctx context.Context) ([]string, error) {
-	lister := s3.New(s.session)
-
-	objects, err := lister.ListObjects(&s3.ListObjectsInput{
+	objects, err := s.lister.ListObjects(&s3.ListObjectsInput{
 		Bucket: &s.bucket,
 	})
 	if err != nil {
@@ -99,8 +112,6 @@ func (s *Storage) ReadRange(ctx context.Context, block, name string, offset, siz
 		return r, nil
 	}
 
-	downloader := s3manager.NewDownloader(s.session)
-
 	r, w := io.Pipe()
 	go func() {
 		var r *string
@@ -109,7 +120,7 @@ func (s *Storage) ReadRange(ctx context.Context, block, name string, offset, siz
 			r = &v
 		}
 
-		_, err := downloader.DownloadWithContext(ctx, newWriteAt(w), &s3.GetObjectInput{
+		_, err := s.downloader.DownloadWithContext(ctx, newWriteAt(w), &s3.GetObjectInput{
 			Bucket: &s.bucket,
 			Key:    aws.String(path.Join(block, name)),
 			Range:  r,
@@ -134,15 +145,13 @@ func (s *Storage) Write(ctx context.Context, block, name string) (io.WriteCloser
 		return nil, fmt.Errorf("create: %w", err)
 	}
 
-	uploader := s3manager.NewUploader(s.session)
-
 	pr, pw := io.Pipe()
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 
-		_, err := uploader.UploadWithContext(ctx, &s3manager.UploadInput{
+		_, err := s.uploader.UploadWithContext(ctx, &s3manager.UploadInput{
 			Body:   pr,
 			Bucket: &s.bucket,
 			Key:    aws.String(path.Join(block, name)),

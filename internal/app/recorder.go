@@ -29,6 +29,10 @@ type RecorderConfig struct {
 			Bucket       string
 			AccessKey    string
 			AccessSecret string
+			Uploader     struct {
+				PartSize    *string
+				Concurrency int
+			}
 		}
 	}
 	Searcher struct {
@@ -101,12 +105,26 @@ func NewRecorder() (*Recorder, error) {
 	var storage repository.Storage
 	switch config.Storage.Type {
 	case "awss3":
+		var partSize int
+		if config.Storage.S3.Uploader.PartSize != nil {
+			v, err := toBytes(*config.Storage.S3.Uploader.PartSize)
+			if err != nil {
+				return nil, fmt.Errorf("to bytes uploader part size: %w", err)
+			}
+
+			partSize = v
+		}
+
 		s, err := files3.NewStorage(files3.StorageConfig{
 			TempDir:      os.TempDir(),
 			Endpoint:     config.Storage.S3.Endpoint,
 			Bucket:       config.Storage.S3.Bucket,
 			AccessKey:    config.Storage.S3.AccessKey,
 			AccessSecret: config.Storage.S3.AccessSecret,
+			Upload: files3.UploadConfig{
+				PartSize:    partSize,
+				Concurrency: config.Storage.S3.Uploader.Concurrency,
+			},
 		})
 		if err != nil {
 			return nil, fmt.Errorf("new storage: %w", err)
