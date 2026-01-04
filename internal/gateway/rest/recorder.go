@@ -59,6 +59,7 @@ func NewRecorder(config RecorderConfig) (*Recorder, error) {
 		logger.EchoLogger(),
 		ConcurrencyLimiter(config.MaxConcurrency),
 		middleware.Recover(),
+		middleware.Decompress(),
 	)
 
 	r.httpServer.POST("/v1/traces", r.Export)
