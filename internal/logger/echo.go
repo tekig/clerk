@@ -23,6 +23,7 @@ func EchoLogger() echo.MiddlewareFunc {
 			var attrs = []slog.Attr{
 				slog.Duration("duration", duration),
 				slog.String("path", c.Request().RequestURI),
+				slog.String("ip", c.RealIP()),
 			}
 
 			var level = slog.LevelInfo
