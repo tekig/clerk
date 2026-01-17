@@ -66,25 +66,31 @@ func NewStorage(c StorageConfig) (*Storage, error) {
 }
 
 func (s *Storage) Blocks(ctx context.Context) ([]string, error) {
-	objects, err := s.lister.ListObjects(&s3.ListObjectsInput{
-		Bucket: &s.bucket,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("list objects: %w", err)
-	}
-
-	var blocksMap = make(map[string]struct{}, len(objects.Contents))
-	for _, content := range objects.Contents {
-		if content.Key == nil {
-			continue
+	var continuationToken *string
+	var blocks []string
+	for {
+		objects, err := s.lister.ListObjectsV2(&s3.ListObjectsV2Input{
+			Bucket:            &s.bucket,
+			Delimiter:         aws.String("/"),
+			ContinuationToken: continuationToken,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("list objects: %w", err)
 		}
-		p := strings.SplitN(*content.Key, "/", 2)
-		blocksMap[p[0]] = struct{}{}
-	}
 
-	var blocks = make([]string, 0, len(objects.Contents))
-	for b := range blocksMap {
-		blocks = append(blocks, b)
+		for _, cp := range objects.CommonPrefixes {
+			if cp.Prefix == nil {
+				continue
+			}
+			block := strings.TrimSuffix(*cp.Prefix, "/")
+			blocks = append(blocks, block)
+		}
+
+		if objects.NextContinuationToken == nil {
+			break
+		}
+
+		continuationToken = objects.NextContinuationToken
 	}
 
 	return blocks, nil

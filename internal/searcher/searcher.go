@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path"
+	"sort"
 	"sync"
 	"time"
 
@@ -38,7 +39,6 @@ type Option func(r *Searcher)
 
 func Readers(address []string) Option {
 	return func(r *Searcher) {
-
 		r.recorders = func() ([]repository.Recorder, error) {
 			var recorders []repository.Recorder
 			for _, address := range address {
@@ -92,22 +92,27 @@ func NewSearcher(storage repository.Storage, cache repository.Cache, options ...
 		return nil, fmt.Errorf("find blocks: %w", err)
 	}
 
-	for _, block := range blocks {
-		var attr = []slog.Attr{
-			slog.String("block", block),
-		}
+	go func() {
+		// First, we restore newer blocks
+		sort.Sort(sort.Reverse(sort.StringSlice(blocks)))
 
-		ctx, l := logger.NewLogger(context.Background())
-		var level = slog.LevelInfo
-		t1 := time.Now()
-		if err := s.AppendBlock(ctx, block); err != nil {
-			level = slog.LevelWarn
-			attr = append(attr, slog.String("error", err.Error()))
-		}
-		attr = append(attr, slog.String("duration", time.Since(t1).String()))
+		for _, block := range blocks {
+			attr := []slog.Attr{
+				slog.String("block", block),
+			}
 
-		l.Log(level, "restore index", attr...)
-	}
+			ctx, l := logger.NewLogger(context.Background())
+			level := slog.LevelInfo
+			t1 := time.Now()
+			if err := s.AppendBlock(ctx, block); err != nil {
+				level = slog.LevelWarn
+				attr = append(attr, slog.String("error", err.Error()))
+			}
+			attr = append(attr, slog.String("duration", time.Since(t1).String()))
+
+			l.Log(level, "restore index", attr...)
+		}
+	}()
 
 	return s, nil
 }
@@ -128,7 +133,7 @@ func (s *Searcher) AppendBlock(ctx context.Context, name string) error {
 		return fmt.Errorf("read filters: %w", err)
 	}
 
-	var pbFilters = &pb.Filters{}
+	pbFilters := &pb.Filters{}
 	if err := block2.Decode(pbFilters, bytes.NewReader(data)); err != nil {
 		return fmt.Errorf("decode filters: %w", err)
 	}
@@ -155,7 +160,7 @@ func (s *Searcher) AppendBlock(ctx context.Context, name string) error {
 			}
 			defer f.Close()
 
-			var data = &pb.Filters{}
+			data := &pb.Filters{}
 			if err := block2.Decode(data, f); err != nil {
 				return nil, fmt.Errorf("decode message: %w", err)
 			}
@@ -376,7 +381,7 @@ func (s *Searcher) searchIndex(ctx context.Context, blockName string, target uui
 	defer r.Close()
 
 	for {
-		var idx = &pb.Index_Chunk{}
+		idx := &pb.Index_Chunk{}
 		if err := block2.Decode(idx, r); err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil, entity.ErrNotFound
@@ -402,7 +407,7 @@ func (s *Searcher) searchChunk(ctx context.Context, blockName string, mark *pb.I
 	r := snappy.NewReader(f)
 
 	for {
-		var m = &pb.Event{}
+		m := &pb.Event{}
 		if err := block2.Decode(m, r); err != nil {
 			return nil, fmt.Errorf("decode: %w", err)
 		}
