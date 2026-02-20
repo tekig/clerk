@@ -19,6 +19,10 @@ func Test_resize(t *testing.T) {
 			b: make([]byte, 20),
 			l: 10,
 		},
+		{
+			b: make([]byte, 0, 7),
+			l: 8,
+		},
 	}
 	for _, tt := range tests {
 		got := Resize(tt.b, tt.l)
@@ -29,7 +33,7 @@ func Test_resize(t *testing.T) {
 }
 
 func Benchmark_resize(b *testing.B) {
-	var p = make([]byte, 0, 4*1024*1024)
+	p := make([]byte, 0, 4*1024*1024)
 	for range b.N {
 		n := Resize(p, 8000)
 		_ = n

@@ -7,7 +7,7 @@ func Resize(b []byte, l int) []byte {
 		return b[:l]
 	}
 
-	e := make([]byte, l-cap(b))
+	e := make([]byte, l-len(b))
 	b = append(b, e...)
 
 	return b[:l]
