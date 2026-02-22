@@ -4,20 +4,22 @@ import (
 	"bytes"
 	"context"
 	"embed"
-	"encoding/json"
 	"fmt"
 	"html/template"
+	"strings"
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/formatters/html"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
+	"github.com/go-xmlfmt/xmlfmt"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/tekig/clerk/internal/logger"
 	"github.com/tekig/clerk/internal/pb"
 	"github.com/tekig/clerk/internal/searcher"
 	"github.com/tekig/clerk/internal/uuid"
+	"github.com/tidwall/pretty"
 )
 
 type WebUI struct {
@@ -161,19 +163,23 @@ func (g *WebUI) pretty(v any) template.HTML {
 }
 
 func (g *WebUI) highlight(text string) (string, error) {
-	var l = lexers.Fallback
-	buf := bytes.NewBuffer(nil)
-	if err := json.Indent(buf, []byte(text), "", "\t"); err == nil {
-		text = buf.String()
+	l := lexers.Fallback
+	switch {
+	case strings.HasPrefix(text, "{"):
+		buf := pretty.Pretty([]byte(text))
+		text = string(buf)
 		l = lexers.Get("json")
+	case strings.HasPrefix(text, "<"):
+		text = xmlfmt.FormatXML(text, "\t", " ")
+		l = lexers.Get("xml")
 	}
-	buf.Reset()
 
 	it, err := l.Tokenise(nil, text)
 	if err != nil {
 		return "", fmt.Errorf("tokinise: %w", err)
 	}
 
+	buf := bytes.NewBuffer(nil)
 	if err := g.formater.Format(buf, g.style, it); err != nil {
 		return "", fmt.Errorf("format: %w", err)
 	}
