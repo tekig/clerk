@@ -27,6 +27,7 @@ type RecorderConfig struct {
 			Bucket       string
 			AccessKey    string
 			AccessSecret string
+			Region       string
 			Uploader     struct {
 				PartSize    *string
 				Concurrency int
@@ -119,6 +120,7 @@ func NewRecorder() (*Recorder, error) {
 			Bucket:       config.Storage.S3.Bucket,
 			AccessKey:    config.Storage.S3.AccessKey,
 			AccessSecret: config.Storage.S3.AccessSecret,
+			Region:       config.Storage.S3.Region,
 			Upload: files3.UploadConfig{
 				PartSize:    partSize,
 				Concurrency: config.Storage.S3.Uploader.Concurrency,

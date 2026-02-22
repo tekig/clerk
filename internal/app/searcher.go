@@ -26,6 +26,7 @@ type SearcherConfig struct {
 			Bucket       string
 			AccessKey    string
 			AccessSecret string
+			Region       string
 		}
 	}
 	Cache struct {
@@ -99,6 +100,7 @@ func NewSearcher() (*Searcher, error) {
 			Bucket:       config.Storage.S3.Bucket,
 			AccessKey:    config.Storage.S3.AccessKey,
 			AccessSecret: config.Storage.S3.AccessSecret,
+			Region:       config.Storage.S3.Region,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("new storage: %w", err)

@@ -33,6 +33,7 @@ type StorageConfig struct {
 	Bucket       string
 	AccessKey    string
 	AccessSecret string
+	Region       string
 	Upload       UploadConfig
 }
 
@@ -45,7 +46,7 @@ func NewStorage(c StorageConfig) (*Storage, error) {
 	config := aws.NewConfig().
 		WithEndpoint(c.Endpoint).
 		WithCredentials(credentials.NewStaticCredentials(c.AccessKey, c.AccessSecret, "")).
-		WithRegion("ru-central1")
+		WithRegion(c.Region)
 
 	sess, err := session.NewSession(config)
 	if err != nil {
