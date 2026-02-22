@@ -3,6 +3,7 @@ package otelproxy
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	common "go.opentelemetry.io/proto/otlp/common/v1"
 )
@@ -27,4 +28,16 @@ func ruleLenGE(rule string) (ruleValueFn, error) {
 			return false
 		}
 	}, nil
+}
+
+func rulePrefix(rule string) ruleKeyFn {
+	return func(v string) bool {
+		return strings.HasPrefix(v, rule)
+	}
+}
+
+func ruleEquals(rule string) ruleKeyFn {
+	return func(v string) bool {
+		return v == rule
+	}
 }

@@ -28,6 +28,10 @@ func parseRule(r []ConfigRule) ([]Rule, error) {
 					return nil, fmt.Errorf("rule #%d: key `%s`: %w", i, k, err)
 				}
 				keyFn = append(keyFn, r.MatchString)
+			case "prefix":
+				keyFn = append(keyFn, rulePrefix(parts[1]))
+			case "equals":
+				keyFn = append(keyFn, ruleEquals(parts[1]))
 			default:
 				return nil, fmt.Errorf("rule #%d: key `%s`: unknown `%s`", i, k, parts[0])
 			}

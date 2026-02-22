@@ -79,6 +79,12 @@ OTELProxy:
         # Using a regular expression for validation
         # requires adding the `regex:` prefix
         - regex:.*
+        # Prefix check for validation
+        # requires adding the `prefix:`
+        - prefix:http.
+        # Checking for exact match for validation
+        # requires adding the `equals:`
+        - equals:http.request.code
       Value:
         # Check attribute length
         - len_ge:100
