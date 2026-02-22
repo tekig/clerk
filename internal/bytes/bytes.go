@@ -7,10 +7,7 @@ func Resize(b []byte, l int) []byte {
 		return b[:l]
 	}
 
-	e := make([]byte, l-len(b))
-	b = append(b, e...)
-
-	return b[:l]
+	return make([]byte, l)
 }
 
 func ReadAll(r io.Reader, b []byte) ([]byte, error) {
