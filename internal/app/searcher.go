@@ -1,11 +1,9 @@
 package app
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"os"
-	"sync"
 
 	debug "github.com/tekig/clerk/internal/gateway/debug"
 	sgrpc "github.com/tekig/clerk/internal/gateway/grpc"
@@ -176,49 +174,34 @@ func NewSearcher() (*Searcher, error) {
 }
 
 func (r *Searcher) Run() (runErr error) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	once := sync.Once{}
+	errChan := make(chan error)
 
 	if r.grpc != nil {
 		go func() {
-			defer cancel()
-
 			if err := r.grpc.Run(); err != nil {
-				once.Do(func() {
-					runErr = fmt.Errorf("run grpc: %w", err)
-				})
+				errChan <- fmt.Errorf("run grpc: %w", err)
 			}
 		}()
 	}
 
 	if r.debug != nil {
 		go func() {
-			defer cancel()
-
 			if err := r.debug.Run(); err != nil {
-				once.Do(func() {
-					runErr = fmt.Errorf("run http: %w", err)
-				})
+				errChan <- fmt.Errorf("run debug: %w", err)
 			}
 		}()
 	}
 
 	if r.webui != nil {
 		go func() {
-			defer cancel()
-
 			if err := r.webui.Run(); err != nil {
-				once.Do(func() {
-					runErr = fmt.Errorf("run webui: %w", err)
-				})
+				errChan <- fmt.Errorf("run webui: %w", err)
 			}
 		}()
 	}
 
-	<-ctx.Done()
-
-	return runErr
+	// dirty program termination
+	return <-errChan
 }
 
 func (r *Searcher) Shutdown() error {
