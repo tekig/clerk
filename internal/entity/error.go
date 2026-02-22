@@ -17,6 +17,4 @@ func (e Error) Error() (text string) {
 	return e.Err.Error() + " " + text
 }
 
-var (
-	ErrNotFound = errors.New("not found")
-)
+var ErrNotFound = errors.New("not found")

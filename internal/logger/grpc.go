@@ -18,12 +18,12 @@ func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 
 		duration := time.Since(startTime)
 
-		var attrs = []slog.Attr{
+		attrs := []slog.Attr{
 			slog.Duration("duration", duration),
 			slog.String("method", info.FullMethod),
 		}
 
-		var level = slog.LevelInfo
+		level := slog.LevelInfo
 		if err != nil {
 			level = slog.LevelError
 			attrs = append(attrs, slog.String("error", err.Error()))

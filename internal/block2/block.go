@@ -144,7 +144,7 @@ func (b *Block) Search(ctx context.Context, target uuid.UUID) (*pb.Event, error)
 	snap := snappy.NewReader(block)
 
 	for {
-		var event = &pb.Event{}
+		event := &pb.Event{}
 		if err := Decode(event, snap); err != nil {
 			if errors.Is(err, io.EOF) {
 				break
@@ -173,7 +173,7 @@ func (b *Block) indexSearch(ctx context.Context, target uuid.UUID) (*pb.Index_Ch
 	defer idx.Close()
 
 	for {
-		var index = &pb.Index_Chunk{}
+		index := &pb.Index_Chunk{}
 		if err := Decode(index, idx); err != nil {
 			if errors.Is(err, io.EOF) {
 				break
@@ -249,7 +249,7 @@ func (b *Block) createBloom(ctx context.Context) error {
 
 	bl := bloom.NewWithEstimates(uint(b.count), 0.01)
 	for {
-		var index = &pb.Index_Chunk{}
+		index := &pb.Index_Chunk{}
 		if err := Decode(index, idx); err != nil {
 			if errors.Is(err, io.EOF) {
 				break
@@ -261,7 +261,7 @@ func (b *Block) createBloom(ctx context.Context) error {
 		}
 	}
 
-	var buf = bytes.NewBuffer(nil)
+	buf := bytes.NewBuffer(nil)
 	if _, err := bl.WriteTo(buf); err != nil {
 		return fmt.Errorf("conv bloom: %w", err)
 	}

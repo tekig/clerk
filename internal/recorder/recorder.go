@@ -88,11 +88,11 @@ func (r *Recorder) Write(ctx context.Context, events []*pb.Event) error {
 				n := time.Now()
 				err := r.export(ctx, b)
 
-				var attrs = []slog.Attr{
+				attrs := []slog.Attr{
 					slog.String("duration", time.Since(n).String()),
 				}
 
-				var level = slog.LevelInfo
+				level := slog.LevelInfo
 				if err != nil {
 					level = slog.LevelError
 					attrs = append(attrs, slog.String("error", err.Error()))
@@ -163,6 +163,9 @@ func (r *Recorder) newBlock() (*block2.Block, error) {
 
 func (r *Recorder) export(ctx context.Context, block *block2.Block) error {
 	var attrs []slog.Attr
+	defer func() {
+		logger.WithAttrs(ctx, slog.Any("export", slog.GroupValue(attrs...)))
+	}()
 
 	t1 := time.Now()
 	if err := block.Close(); err != nil {
@@ -180,8 +183,6 @@ func (r *Recorder) export(ctx context.Context, block *block2.Block) error {
 		return fmt.Errorf("append block: %w", err)
 	}
 	attrs = append(attrs, slog.String("search_notify", time.Since(t2).String()))
-
-	logger.WithAttrs(ctx, slog.Any("export", slog.GroupValue(attrs...)))
 
 	return nil
 }

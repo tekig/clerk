@@ -41,7 +41,7 @@ func readConfig(c any) error {
 }
 
 func toBytes(d string) (int, error) {
-	var units = map[string]int{
+	units := map[string]int{
 		"KiB": 1024,
 		"MiB": 1024 * 1024,
 		"GiB": 1024 * 1024 * 1024,

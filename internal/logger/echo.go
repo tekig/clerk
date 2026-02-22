@@ -20,13 +20,13 @@ func EchoLogger() echo.MiddlewareFunc {
 
 			duration := time.Since(startTime)
 
-			var attrs = []slog.Attr{
+			attrs := []slog.Attr{
 				slog.Duration("duration", duration),
 				slog.String("path", c.Request().RequestURI),
 				slog.String("ip", c.RealIP()),
 			}
 
-			var level = slog.LevelInfo
+			level := slog.LevelInfo
 			if err != nil {
 				level = slog.LevelError
 				attrs = append(attrs, slog.String("error", err.Error()))

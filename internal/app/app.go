@@ -15,7 +15,7 @@ type App interface {
 func Start(ctx context.Context, app App) error {
 	var errs []error
 
-	var run = make(chan error)
+	run := make(chan error)
 	go func() {
 		if err := app.Run(); err != nil {
 			run <- fmt.Errorf("run: %w", err)

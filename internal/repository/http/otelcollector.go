@@ -50,7 +50,7 @@ func (c *OTELCollector) Export(ctx context.Context, in *v1.ExportTraceServiceReq
 		return nil, fmt.Errorf("invalid response `%s`", res.Header.Get("Content-Type"))
 	}
 
-	var out = &v1.ExportTraceServiceResponse{}
+	out := &v1.ExportTraceServiceResponse{}
 	if err := proto.Unmarshal(resBody, out); err != nil {
 		return nil, fmt.Errorf("proto unmarshal: %w", err)
 	}
