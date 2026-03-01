@@ -10,6 +10,7 @@ import (
 	"github.com/tekig/clerk/internal/recorder"
 	"github.com/tekig/clerk/internal/repository/http"
 	"github.com/tekig/clerk/internal/uuid"
+	"github.com/tekig/clerk/internal/x/xsync"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -191,17 +192,35 @@ func (p *Proxy) Grep(ctx context.Context, res []*trace.ResourceSpans) (*otelcoll
 		}
 	}
 
-	if len(events) > 0 {
-		if err := p.recorder.Write(ctx, events); err != nil {
-			return nil, fmt.Errorf("recoreder write: %w", err)
+	// Export can take a long time, and it's doing nothing the entire time
+	// Let's run it in parallel to free up memory a little earlier
+	var wg xsync.ErrGroup
+	var response *otelcollector.ExportTraceServiceResponse
+	wg.Go(func() error {
+		res, err := p.target.Export(ctx, &otelcollector.ExportTraceServiceRequest{
+			ResourceSpans: res,
+		})
+		if err != nil {
+			return fmt.Errorf("target export: %w", err)
 		}
+
+		response = res
+
+		return nil
+	})
+
+	if len(events) > 0 {
+		wg.Go(func() error {
+			if err := p.recorder.Write(ctx, events); err != nil {
+				return fmt.Errorf("recoreder write: %w", err)
+			}
+
+			return nil
+		})
 	}
 
-	response, err := p.target.Export(ctx, &otelcollector.ExportTraceServiceRequest{
-		ResourceSpans: res,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("target export: %w", err)
+	if err := wg.Wait(); err != nil {
+		return nil, fmt.Errorf("wait: %w", err)
 	}
 
 	return response, nil
