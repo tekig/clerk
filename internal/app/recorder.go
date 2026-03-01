@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	debug "github.com/tekig/clerk/internal/gateway/debug"
 	sgrpc "github.com/tekig/clerk/internal/gateway/grpc"
@@ -38,9 +39,10 @@ type RecorderConfig struct {
 		Address string
 	}
 	Recorder struct {
-		BlockSize *string
-		ChunkSize *string
-		BlocksDir *string
+		BlockSize   *string
+		ChunkSize   *string
+		BlocksDir   *string
+		BlockMaxAge *time.Duration
 	}
 	OTELProxy struct {
 		Target          string
@@ -163,6 +165,9 @@ func NewRecorder() (*Recorder, error) {
 		}
 
 		recorderOptions = append(recorderOptions, recorder.MaxChunkSize(size))
+	}
+	if config.Recorder.BlockMaxAge != nil {
+		recorderOptions = append(recorderOptions, recorder.MaxBlockAge(*config.Recorder.BlockMaxAge))
 	}
 
 	r, err := recorder.NewRecorder(storage, searcher, recorderOptions...)

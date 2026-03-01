@@ -16,6 +16,7 @@ import (
 	"github.com/tekig/clerk/internal/repository"
 	"github.com/tekig/clerk/internal/uuid"
 	"github.com/tekig/clerk/internal/writer"
+	"github.com/tekig/clerk/internal/x/xtime"
 )
 
 type Block struct {
@@ -34,7 +35,7 @@ type Block struct {
 
 	// Maximum time that data can be in the buffer.
 	// If there are few events, the last event may be displayed as not found.
-	maxBufDuration *time.Ticker
+	maxBufDuration *xtime.Ticker
 	maxChunkSize   int
 }
 
@@ -74,12 +75,12 @@ func NewBlock(s repository.Storage, id string, options ...BlockOption) (*Block, 
 		},
 		start: time.Now(),
 
-		maxBufDuration: time.NewTicker(30 * time.Second),
+		maxBufDuration: xtime.NewTicker(30 * time.Second),
 		maxChunkSize:   64 * 1024 * 1024,
 	}
 
 	go func() {
-		for range block.maxBufDuration.C {
+		for range block.maxBufDuration.C() {
 			if block.wmu.TryLock() {
 				if block.closed {
 					block.wmu.Unlock()
@@ -215,7 +216,7 @@ func (b *Block) Close() error {
 
 	b.closed = true
 
-	b.maxBufDuration.Stop()
+	b.maxBufDuration.Close()
 
 	if err := b.nextChuck(); err != nil {
 		return fmt.Errorf("next chuck: %w", err)
