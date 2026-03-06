@@ -5,26 +5,25 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path"
 	"strconv"
 	"strings"
 	"sync"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 type Storage struct {
-	tmp        string
-	bucket     string
-	session    *session.Session
-	uploader   *s3manager.Uploader
-	downloader *s3manager.Downloader
-	lister     *s3.S3
+	tmp      string
+	bucket   string
+	client   *s3.Client
+	transfer *transfermanager.Client
 }
 
 type StorageConfig struct {
@@ -43,26 +42,40 @@ type UploadConfig struct {
 }
 
 func NewStorage(c StorageConfig) (*Storage, error) {
-	config := aws.NewConfig().
-		WithEndpoint(c.Endpoint).
-		WithCredentials(credentials.NewStaticCredentials(c.AccessKey, c.AccessSecret, "")).
-		WithRegion(c.Region)
+	if c.Endpoint != "" {
+		// Backward compatibility
+		// Previously, aws-sdk-go accepted Endpoints without specifying a schema.
+		uri, err := url.Parse(c.Endpoint)
+		if err != nil {
+			return nil, fmt.Errorf("parse endpoint: %w", err)
+		}
 
-	sess, err := session.NewSession(config)
-	if err != nil {
-		return nil, fmt.Errorf("create session: %w", err)
+		if uri.Scheme == "" {
+			c.Endpoint = "https://" + c.Endpoint
+		}
 	}
 
+	cfg, err := config.LoadDefaultConfig(
+		context.TODO(),
+		config.WithRegion(c.Region),
+		config.WithBaseEndpoint(c.Endpoint),
+		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(c.AccessKey, c.AccessSecret, "")),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
+	client := s3.NewFromConfig(cfg)
+
+	transfer := transfermanager.New(client, func(o *transfermanager.Options) {
+		o.Concurrency = c.Upload.Concurrency
+		o.PartSizeBytes = int64(c.Upload.PartSize)
+	})
+
 	return &Storage{
-		tmp:     c.TempDir,
-		bucket:  c.Bucket,
-		session: sess,
-		uploader: s3manager.NewUploader(sess, func(u *s3manager.Uploader) {
-			u.PartSize = int64(c.Upload.PartSize)
-			u.Concurrency = c.Upload.Concurrency
-		}),
-		downloader: s3manager.NewDownloader(sess),
-		lister:     s3.New(sess),
+		tmp:      c.TempDir,
+		bucket:   c.Bucket,
+		client:   client,
+		transfer: transfer,
 	}, nil
 }
 
@@ -70,7 +83,7 @@ func (s *Storage) Blocks(ctx context.Context) ([]string, error) {
 	var continuationToken *string
 	var blocks []string
 	for {
-		objects, err := s.lister.ListObjectsV2(&s3.ListObjectsV2Input{
+		objects, err := s.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
 			Bucket:            &s.bucket,
 			Delimiter:         aws.String("/"),
 			ContinuationToken: continuationToken,
@@ -127,10 +140,11 @@ func (s *Storage) ReadRange(ctx context.Context, block, name string, offset, siz
 			r = &v
 		}
 
-		_, err := s.downloader.DownloadWithContext(ctx, newWriteAt(w), &s3.GetObjectInput{
-			Bucket: &s.bucket,
-			Key:    aws.String(path.Join(block, name)),
-			Range:  r,
+		_, err := s.transfer.DownloadObject(ctx, &transfermanager.DownloadObjectInput{
+			Bucket:   &s.bucket,
+			Key:      aws.String(path.Join(block, name)),
+			Range:    r, // rename to Range https://github.com/aws/aws-sdk-go-v2/issues/3322
+			WriterAt: newWriteAt(w),
 		})
 		if err != nil {
 			err = fmt.Errorf("downloader: %w", err)
@@ -158,7 +172,7 @@ func (s *Storage) Write(ctx context.Context, block, name string) (io.WriteCloser
 	go func() {
 		defer wg.Done()
 
-		_, err := s.uploader.UploadWithContext(ctx, &s3manager.UploadInput{
+		_, err := s.transfer.UploadObject(ctx, &transfermanager.UploadObjectInput{
 			Body:   pr,
 			Bucket: &s.bucket,
 			Key:    aws.String(path.Join(block, name)),
