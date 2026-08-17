@@ -82,7 +82,8 @@ OTELProxy:
   FormatURL: http://searcher:8081/events/%s
   # The rule will be checked in order until it finds a match.
   # Specifying multiple rules inside Key will be combined as OR
-  Rules:
+  # Previously called Rules, this setting is deprecated but is still supported.
+  AttributeRules:
     - Key:
         # Using a regular expression for validation
         # requires adding the `regex:` prefix
@@ -96,6 +97,13 @@ OTELProxy:
       Value:
         # Check attribute length
         - len_ge:100
+      Span:
+        # Name must be exactly the same
+        - name:equals:Request
+        # Name using a regular expression for validation
+        - name:regex:Req.*
+        # Name has prefix check for validation
+        - name:prefix:Req
       # What to do with the attribute if the rule is met
       # Allow: see DefaultStrategy
       Strategy: unlink

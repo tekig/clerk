@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	common "go.opentelemetry.io/proto/otlp/common/v1"
+	trace "go.opentelemetry.io/proto/otlp/trace/v1"
 )
 
 func ruleLenGE(rule string) (ruleValueFn, error) {
@@ -39,5 +40,11 @@ func rulePrefix(rule string) ruleKeyFn {
 func ruleEquals(rule string) ruleKeyFn {
 	return func(v string) bool {
 		return v == rule
+	}
+}
+
+func ruleSpan(fn ruleKeyFn) ruleSpanFn {
+	return func(v *trace.Span) bool {
+		return fn(v.Name)
 	}
 }

@@ -37,12 +37,14 @@ type Config struct {
 type ConfigRule struct {
 	Key      []string
 	Value    []string
+	Span     []string
 	Strategy string
 }
 
 type (
 	ruleKeyFn   func(v string) bool
 	ruleValueFn func(v *common.AnyValue) bool
+	ruleSpanFn  func(v *trace.Span) bool
 )
 
 type RuleStrategy string
@@ -61,6 +63,7 @@ var (
 type Rule struct {
 	key      []ruleKeyFn
 	value    []ruleValueFn
+	span     []ruleSpanFn
 	strategy RuleStrategy
 }
 
@@ -118,7 +121,7 @@ func (p *Proxy) Grep(ctx context.Context, res []*trace.ResourceSpans) (*otelcoll
 				}
 				nextAttributes := make([]*common.KeyValue, 0, len(prevSpan.Attributes))
 				for _, prevAttribute := range prevSpan.Attributes {
-					switch p.rule(prevAttribute) {
+					switch p.rule(prevAttribute, prevSpan) {
 					case RuleStrategyUnlink:
 						var eventAttribute *pb.Attribute
 						switch v := prevAttribute.GetValue().GetValue().(type) {
@@ -226,7 +229,7 @@ func (p *Proxy) Grep(ctx context.Context, res []*trace.ResourceSpans) (*otelcoll
 	return response, nil
 }
 
-func (p *Proxy) rule(kv *common.KeyValue) RuleStrategy {
+func (p *Proxy) rule(kv *common.KeyValue, span *trace.Span) RuleStrategy {
 	ruleKeyFn := func(fn []ruleKeyFn, k string) bool {
 		if len(fn) == 0 {
 			return true
@@ -259,7 +262,29 @@ func (p *Proxy) rule(kv *common.KeyValue) RuleStrategy {
 		return false
 	}
 
+	ruleSpanFn := func(fn []ruleSpanFn, v *trace.Span) bool {
+		if v == nil {
+			return false
+		}
+
+		if len(fn) == 0 {
+			return true
+		}
+
+		for _, fn := range fn {
+			if fn(v) {
+				return true
+			}
+		}
+
+		return false
+	}
+
 	for _, rule := range p.rules {
+		if !ruleSpanFn(rule.span, span) {
+			continue
+		}
+
 		if !ruleKeyFn(rule.key, kv.Key) {
 			continue
 		}

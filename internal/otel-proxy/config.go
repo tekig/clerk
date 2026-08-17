@@ -53,19 +53,57 @@ func parseRule(r []ConfigRule) ([]Rule, error) {
 
 				valueFn = append(valueFn, r)
 			default:
-				return nil, fmt.Errorf("rule #%d: key `%s`: unknown `%s`", i, v, parts[0])
+				return nil, fmt.Errorf("rule #%d: value `%s`: unknown `%s`", i, v, parts[0])
+			}
+		}
+
+		var spanFn []ruleSpanFn
+		for _, s := range r.Span {
+			rule, err := parseRuleSpan(s)
+			if err != nil {
+				return nil, fmt.Errorf("rule #%d: %w", i, err)
 			}
 
+			spanFn = append(spanFn, rule)
 		}
 
 		rules = append(rules, Rule{
 			key:      keyFn,
 			value:    valueFn,
+			span:     spanFn,
 			strategy: strategy,
 		})
 	}
 
 	return rules, nil
+}
+
+func parseRuleSpan(s string) (ruleSpanFn, error) {
+	parts := strings.SplitN(s, ":", 3)
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("span `%s`: invalid format", s)
+	}
+
+	if parts[0] == "name" {
+		if parts[1] == "equals" {
+			return ruleSpan(ruleEquals(parts[2])), nil
+		}
+
+		if parts[1] == "prefix" {
+			return ruleSpan(rulePrefix(parts[2])), nil
+		}
+
+		if parts[1] == "regex" {
+			r, err := regexp.Compile(parts[1])
+			if err != nil {
+				return nil, fmt.Errorf("key `%s`: %w", s, err)
+			}
+
+			return ruleSpan(r.MatchString), nil
+		}
+	}
+
+	return nil, fmt.Errorf("span `%s`: unknown `%s`", s, parts[0])
 }
 
 func parseStrategy(s string) (RuleStrategy, error) {

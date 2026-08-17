@@ -48,7 +48,10 @@ type RecorderConfig struct {
 		Target          string
 		DefaultStrategy string
 		FormatURL       string
-		Rules           []otelproxy.ConfigRule
+		// depricated
+		// used for backward compatibility complements AttributeRules
+		Rules          []otelproxy.ConfigRule
+		AttributeRules []otelproxy.ConfigRule
 	}
 	Gateway struct {
 		GRPC *struct {
