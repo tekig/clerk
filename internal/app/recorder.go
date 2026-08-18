@@ -195,7 +195,7 @@ func NewRecorder() (*Recorder, error) {
 		Recorder:        r,
 		FormatURL:       config.OTELProxy.FormatURL,
 		DefaultStrategy: config.OTELProxy.DefaultStrategy,
-		Rules:           config.OTELProxy.Rules,
+		Rules:           append(config.OTELProxy.Rules, config.OTELProxy.AttributeRules...),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("otel proxy: %w", err)
