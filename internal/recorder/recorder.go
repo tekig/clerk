@@ -136,6 +136,7 @@ func (r *Recorder) Write(ctx context.Context, events []*pb.Event) error {
 func (r *Recorder) Search(ctx context.Context, id uuid.UUID) (*pb.Event, error) {
 	r.mu.Lock()
 	if r.block == nil {
+		r.mu.Unlock()
 		return nil, fmt.Errorf("block is empty")
 	}
 	b := r.block
