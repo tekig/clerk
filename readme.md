@@ -21,6 +21,14 @@ First, you need to create a network to connect the components to each other.
 docker network create clerk
 ```
 
+Copy and configure two configuration files
+```bash
+cp config/example_recorder.yaml config/recorder.yaml
+cp config/example_searcher.yaml config/searcher.yaml
+```
+
+Fill in the `Storage` fields for both implementations. In the `OTELProxy.Target` field, specify the final OTEL server.
+
 We create a recorder to which events will be sent for saving in the future. There may be several pods, the main thing is to indicate them in the other components.
 ```bash
 docker run -d --name recorder \

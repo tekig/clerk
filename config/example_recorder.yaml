@@ -59,7 +59,7 @@ Recorder:
   # Storage space for prepared blocks
   #
   # Default: os.TempDir https://pkg.go.dev/os#TempDir
-  BlocksDir: ./tmp
+  # BlocksDir: ./tmp
   # The maximum lifetime of a block after which the block will be recreated
   #
   # When automatic cleanup of not-yet-uploaded data in S3 is enabled,
