@@ -28,6 +28,7 @@ type Block struct {
 	prevSize     int
 	count        int
 	start        time.Time
+	end          time.Time
 
 	wmu    sync.Mutex   // mutex from write
 	rmu    sync.RWMutex // mutex from read
@@ -74,6 +75,7 @@ func NewBlock(s repository.Storage, id string, options ...BlockOption) (*Block, 
 			},
 		},
 		start: time.Now(),
+		end:   time.Now(),
 
 		maxBufDuration: xtime.NewTicker(30 * time.Second),
 		maxChunkSize:   64 * 1024 * 1024,
@@ -119,6 +121,18 @@ func (b *Block) Write(event *pb.Event) error {
 
 	b.currentIndex.Ids = append(b.currentIndex.Ids, event.Id)
 	b.count++
+
+	id, err := uuid.FromBytes(event.Id)
+	if err != nil {
+		return fmt.Errorf("read uuid from byte: %w", err)
+	}
+
+	if b.start.After(id.Time()) {
+		b.start = id.Time()
+	}
+	if b.end.Before(id.Time()) {
+		b.end = id.Time()
+	}
 
 	return nil
 }
@@ -277,7 +291,7 @@ func (b *Block) createBloom(ctx context.Context) error {
 		Bloom: buf.Bytes(),
 		TimeMillis: &pb.Filters_TimeMillis{
 			Start: b.start.UnixMilli(),
-			End:   time.Now().UnixMilli(),
+			End:   b.end.UnixMilli(),
 		},
 	}, bloom); err != nil {
 		return fmt.Errorf("write bloom: %w", err)
