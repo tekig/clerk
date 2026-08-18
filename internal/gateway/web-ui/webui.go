@@ -15,10 +15,12 @@ import (
 	"github.com/go-xmlfmt/xmlfmt"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/tekig/clerk/internal/entity"
 	"github.com/tekig/clerk/internal/logger"
 	"github.com/tekig/clerk/internal/pb"
 	"github.com/tekig/clerk/internal/searcher"
 	"github.com/tekig/clerk/internal/uuid"
+	"github.com/tekig/clerk/internal/x/xstring"
 	"github.com/tidwall/pretty"
 )
 
@@ -58,6 +60,7 @@ func NewWebUI(config SearcherConfig) (*WebUI, error) {
 		"print_id":   g.printID,
 		"pretty":     g.pretty,
 		"pretty_css": g.prettyCSS,
+		"title":      g.title,
 	}
 
 	g.template.Funcs(tmplFuncs)
@@ -119,6 +122,29 @@ func (g *WebUI) Run() error {
 
 func (g *WebUI) Shutdown() error {
 	return g.server.Shutdown(context.Background())
+}
+
+func (g *WebUI) title(e *pb.Event) string {
+	if e == nil {
+		return "Clerk"
+	}
+
+	traceID := entity.MetaValueUnknown
+	spanID := entity.MetaValueUnknown
+	for _, a := range e.Attributes {
+		if a.Key == entity.MetaTraceID {
+			if value := a.GetAsString(); value != "" {
+				traceID = xstring.LimitRight(value, 6)
+			}
+		}
+		if a.Key == entity.MetaSpanID {
+			if value := a.GetAsString(); value != "" {
+				spanID = xstring.LimitRight(value, 6)
+			}
+		}
+	}
+
+	return fmt.Sprintf("Clerk-%s-%s", traceID, spanID)
 }
 
 func (g *WebUI) printID(id []byte) string {

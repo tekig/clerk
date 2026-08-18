@@ -2,10 +2,12 @@ package otelproxy
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"sync"
 
+	"github.com/tekig/clerk/internal/entity"
 	"github.com/tekig/clerk/internal/pb"
 	"github.com/tekig/clerk/internal/recorder"
 	"github.com/tekig/clerk/internal/repository/http"
@@ -105,7 +107,7 @@ func New(c Config) (*Proxy, error) {
 func (p *Proxy) Grep(ctx context.Context, res []*trace.ResourceSpans) (*otelcollector.ExportTraceServiceResponse, error) {
 	var events []*pb.Event
 	for _, prevRes := range res {
-		serviceName := "unknown"
+		serviceName := entity.MetaValueUnknown
 		for _, kv := range prevRes.GetResource().GetAttributes() {
 			if kv.GetKey() == "service.name" {
 				serviceName = kv.GetValue().GetStringValue()
@@ -114,11 +116,7 @@ func (p *Proxy) Grep(ctx context.Context, res []*trace.ResourceSpans) (*otelcoll
 
 		for _, prevScope := range prevRes.ScopeSpans {
 			for _, prevSpan := range prevScope.Spans {
-				id := uuid.New()
-				event := &pb.Event{
-					Id:         id[:],
-					Attributes: make([]*pb.Attribute, 0),
-				}
+				eventAttributes := make([]*pb.Attribute, 0)
 				nextAttributes := make([]*common.KeyValue, 0, len(prevSpan.Attributes))
 				for _, prevAttribute := range prevSpan.Attributes {
 					switch p.rule(prevAttribute, prevSpan) {
@@ -162,7 +160,7 @@ func (p *Proxy) Grep(ctx context.Context, res []*trace.ResourceSpans) (*otelcoll
 							}
 						}
 
-						event.Attributes = append(event.Attributes, eventAttribute)
+						eventAttributes = append(eventAttributes, eventAttribute)
 					case RuleStrategyRemove:
 						// remove
 					default: // RuleStrategyKeep
@@ -177,7 +175,9 @@ func (p *Proxy) Grep(ctx context.Context, res []*trace.ResourceSpans) (*otelcoll
 						attribute.String("span.name", prevSpan.Name),
 					),
 				)
-				if len(event.Attributes) > 0 {
+				if len(eventAttributes) > 0 {
+					id := uuid.New()
+
 					nextAttributes = append(nextAttributes,
 						&common.KeyValue{
 							Key: "event_url",
@@ -188,6 +188,36 @@ func (p *Proxy) Grep(ctx context.Context, res []*trace.ResourceSpans) (*otelcoll
 							},
 						},
 					)
+
+					metaEvent := []*pb.Attribute{
+						{
+							Key: entity.MetaServiceName,
+							Value: &pb.Attribute_AsString{
+								AsString: serviceName,
+							},
+						}, {
+							Key: entity.MetaSpanName,
+							Value: &pb.Attribute_AsString{
+								AsString: prevSpan.Name,
+							},
+						}, {
+							Key: entity.MetaTraceID,
+							Value: &pb.Attribute_AsString{
+								AsString: hex.EncodeToString(prevSpan.TraceId),
+							},
+						}, {
+							Key: entity.MetaSpanID,
+							Value: &pb.Attribute_AsString{
+								AsString: hex.EncodeToString(prevSpan.SpanId),
+							},
+						},
+					}
+
+					event := &pb.Event{
+						Id:         id[:],
+						Attributes: append(metaEvent, eventAttributes...),
+					}
+
 					events = append(events, event)
 				}
 				prevSpan.Attributes = nextAttributes
