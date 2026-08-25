@@ -11,9 +11,9 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/tekig/clerk/internal/bytes"
 	"github.com/tekig/clerk/internal/logger"
 	otelproxy "github.com/tekig/clerk/internal/otel-proxy"
+	"github.com/tekig/clerk/internal/x/xbytes"
 	tracev1 "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 )
 
@@ -83,7 +83,7 @@ func (r *Recorder) Export(c echo.Context) error {
 	}()
 
 	if c.Request().ContentLength > 0 {
-		buf = bytes.Resize(buf, int(c.Request().ContentLength))[:0]
+		buf = xbytes.Resize(buf, int(c.Request().ContentLength))[:0]
 	}
 
 	buf, err := ReadAll(c.Request().Body, buf)

@@ -6,7 +6,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/tekig/clerk/internal/bytes"
+	"github.com/tekig/clerk/internal/x/xbytes"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -47,12 +47,12 @@ func Decode(m proto.Message, r io.Reader) error {
 		poolBuf.Put(b[:0])
 	}()
 
-	b = bytes.Resize(b, 8)
+	b = xbytes.Resize(b, 8)
 	if _, err := io.ReadFull(r, b); err != nil {
 		return fmt.Errorf("read size: %w", err)
 	}
 
-	b = bytes.Resize(b, int(binary.LittleEndian.Uint64(b)))
+	b = xbytes.Resize(b, int(binary.LittleEndian.Uint64(b)))
 	if _, err := io.ReadFull(r, b); err != nil {
 		return fmt.Errorf("read data: %w", err)
 	}
