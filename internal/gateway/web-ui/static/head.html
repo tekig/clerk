@@ -13,7 +13,10 @@
         }
         td:first-child {
             width: 20%;
-            white-space: nowrap;
+        }
+        td * {
+            white-space: normal;
+            word-break: break-word;
         }
         body {
             font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -39,6 +42,9 @@
         a {
             text-decoration: none;
             color: aliceblue;
+        }
+        .key {
+            color: #92929D;
         }
     </style>
     <title>{{ title . }}</title>
