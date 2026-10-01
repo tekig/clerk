@@ -40,8 +40,8 @@ func NewRecorder(config RecorderConfig) (*Recorder, error) {
 	r := &Recorder{
 		otelProxy:  config.OTELProxy,
 		httpServer: echo.New(),
+		// Only OTLP/HTTP binary protobuf is supported
 		marshalers: map[string]runtime.Marshaler{
-			runtime.MIMEWildcard:     &runtime.HTTPBodyMarshaler{},
 			"application/x-protobuf": &runtime.ProtoMarshaller{},
 			"application/protobuf":   &runtime.ProtoMarshaller{},
 		},
@@ -92,10 +92,16 @@ func (r *Recorder) Export(c echo.Context) error {
 	}
 
 	inboundMarshaler, outboundMarshaler := r.marshaler(c.Request())
+	if inboundMarshaler == nil {
+		return echo.NewHTTPError(
+			http.StatusUnsupportedMediaType,
+			fmt.Sprintf("unsupported content type `%s`", c.Request().Header.Get(echo.HeaderContentType)),
+		)
+	}
 
 	var protoReq tracev1.ExportTraceServiceRequest
 	if err := inboundMarshaler.Unmarshal(buf, &protoReq); err != nil {
-		return fmt.Errorf("unmarshal: %w", err)
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("unmarshal: %s", err))
 	}
 
 	resp, err := r.otelProxy.Grep(c.Request().Context(), protoReq.ResourceSpans)
@@ -110,6 +116,7 @@ func (r *Recorder) Export(c echo.Context) error {
 	return nil
 }
 
+// marshaler returns nil inbound if the content type is not supported.
 func (r *Recorder) marshaler(req *http.Request) (inbound runtime.Marshaler, outbound runtime.Marshaler) {
 	for _, accept := range req.Header[echo.HeaderAccept] {
 		if m, ok := r.marshalers[accept]; ok {
@@ -130,9 +137,6 @@ func (r *Recorder) marshaler(req *http.Request) (inbound runtime.Marshaler, outb
 		}
 	}
 
-	if inbound == nil {
-		inbound = r.marshalers[runtime.MIMEWildcard]
-	}
 	if outbound == nil {
 		outbound = inbound
 	}
