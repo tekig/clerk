@@ -18,13 +18,13 @@ func ruleLenGE(rule string) (ruleValueFn, error) {
 	return func(v *common.AnyValue) bool {
 		switch v := v.Value.(type) {
 		case *common.AnyValue_ArrayValue:
-			return len(v.ArrayValue.Values) > size
+			return len(v.ArrayValue.Values) >= size
 		case *common.AnyValue_BytesValue:
-			return len(v.BytesValue) > size
+			return len(v.BytesValue) >= size
 		case *common.AnyValue_KvlistValue:
-			return len(v.KvlistValue.Values) > size
+			return len(v.KvlistValue.Values) >= size
 		case *common.AnyValue_StringValue:
-			return len(v.StringValue) > size
+			return len(v.StringValue) >= size
 		default:
 			return false
 		}
