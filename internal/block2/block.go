@@ -32,6 +32,7 @@ type Block struct {
 
 	wmu    sync.Mutex   // mutex from write
 	rmu    sync.RWMutex // mutex from read
+	imu    sync.Mutex   // mutex from currentIndex, shared by write and read
 	closed bool
 
 	// Maximum time that data can be in the buffer.
@@ -119,7 +120,9 @@ func (b *Block) Write(event *pb.Event) error {
 		return fmt.Errorf("write event: %w", err)
 	}
 
+	b.imu.Lock()
 	b.currentIndex.Ids = append(b.currentIndex.Ids, event.Id)
+	b.imu.Unlock()
 	b.count++
 
 	id, err := uuid.FromBytes(event.Id)
@@ -175,9 +178,16 @@ func (b *Block) Search(ctx context.Context, target uuid.UUID) (*pb.Event, error)
 }
 
 func (b *Block) indexSearch(ctx context.Context, target uuid.UUID) (*pb.Index_Chunk_Mark, error) {
-	for _, id := range b.currentIndex.Ids {
+	// Snapshot of the current chunk. Write only appends after len(Ids)
+	// and Mark is replaced, not modified, so it can be scanned without holding the mutex.
+	b.imu.Lock()
+	ids := b.currentIndex.Ids
+	mark := b.currentIndex.Mark
+	b.imu.Unlock()
+
+	for _, id := range ids {
 		if uuid.UUID(id) == target {
-			return b.currentIndex.Mark, nil
+			return mark, nil
 		}
 	}
 
@@ -309,10 +319,12 @@ func (b *Block) nextChuck() error {
 
 	b.blockWriter.Origin().Mark()
 
-	b.currentIndex.Mark.Size = int64(b.blockWriter.Origin().Origin().Size()) - b.currentIndex.Mark.Offset
-
-	if err := Encode(b.currentIndex, b.indexWriter); err != nil {
-		return fmt.Errorf("write index: %w", err)
+	b.imu.Lock()
+	index := b.currentIndex
+	// Mark may be held by Search, so it is replaced instead of modified
+	index.Mark = &pb.Index_Chunk_Mark{
+		Size:   int64(b.blockWriter.Origin().Origin().Size()) - index.Mark.Offset,
+		Offset: index.Mark.Offset,
 	}
 
 	b.currentIndex = &pb.Index_Chunk{
@@ -320,6 +332,11 @@ func (b *Block) nextChuck() error {
 			Size:   -1,
 			Offset: int64(b.blockWriter.Origin().Origin().Size()),
 		},
+	}
+	b.imu.Unlock()
+
+	if err := Encode(index, b.indexWriter); err != nil {
+		return fmt.Errorf("write index: %w", err)
 	}
 
 	return nil
