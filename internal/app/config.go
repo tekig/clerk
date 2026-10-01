@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -47,15 +48,16 @@ func toBytes(d string) (int, error) {
 		"GiB": 1024 * 1024 * 1024,
 	}
 
-	var split int
-	for i, c := range d {
-		if c >= '0' && c <= '9' {
-			split = i
-		}
+	// Leading digits are the size, the rest is the unit
+	split := strings.IndexFunc(d, func(c rune) bool {
+		return c < '0' || c > '9'
+	})
+	if split == -1 {
+		split = len(d)
 	}
 
-	size := d[0 : split+1]
-	unit := d[1+split:]
+	size := d[:split]
+	unit := d[split:]
 
 	value, err := strconv.Atoi(size)
 	if err != nil {
@@ -64,7 +66,7 @@ func toBytes(d string) (int, error) {
 
 	k, ok := units[unit]
 	if !ok {
-		return 0, fmt.Errorf("unknown unit `%s`: %w", unit, err)
+		return 0, fmt.Errorf("unknown unit `%s`", unit)
 	}
 
 	return value * k, nil
