@@ -94,7 +94,7 @@ func parseRuleSpan(s string) (ruleSpanFn, error) {
 		}
 
 		if parts[1] == "regex" {
-			r, err := regexp.Compile(parts[1])
+			r, err := regexp.Compile(parts[2])
 			if err != nil {
 				return nil, fmt.Errorf("key `%s`: %w", s, err)
 			}
