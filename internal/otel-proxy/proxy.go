@@ -106,6 +106,8 @@ func New(c Config) (*Proxy, error) {
 
 func (p *Proxy) Grep(ctx context.Context, res []*trace.ResourceSpans) (*otelcollector.ExportTraceServiceResponse, error) {
 	var events []*pb.Event
+	// Rules applicable to the current span, reused between spans
+	var spanRules []*Rule
 	for _, prevRes := range res {
 		serviceName := entity.MetaValueUnknown
 		for _, kv := range prevRes.GetResource().GetAttributes() {
@@ -118,8 +120,9 @@ func (p *Proxy) Grep(ctx context.Context, res []*trace.ResourceSpans) (*otelcoll
 			for _, prevSpan := range prevScope.Spans {
 				eventAttributes := make([]*pb.Attribute, 0)
 				nextAttributes := make([]*common.KeyValue, 0, len(prevSpan.Attributes))
+				spanRules = p.spanRules(prevSpan, spanRules)
 				for _, prevAttribute := range prevSpan.Attributes {
-					switch p.rule(prevAttribute, prevSpan) {
+					switch p.rule(prevAttribute, spanRules) {
 					case RuleStrategyUnlink:
 						var eventAttribute *pb.Attribute
 						switch v := prevAttribute.GetValue().GetValue().(type) {
@@ -259,67 +262,29 @@ func (p *Proxy) Grep(ctx context.Context, res []*trace.ResourceSpans) (*otelcoll
 	return response, nil
 }
 
-func (p *Proxy) rule(kv *common.KeyValue, span *trace.Span) RuleStrategy {
-	ruleKeyFn := func(fn []ruleKeyFn, k string) bool {
-		if len(fn) == 0 {
-			return true
+// spanRules returns the rules whose span conditions match the span, preserving their order.
+// Span conditions do not depend on attributes, so they are checked once per span.
+// buf is reused to avoid allocations.
+func (p *Proxy) spanRules(span *trace.Span, buf []*Rule) []*Rule {
+	buf = buf[:0]
+	for i := range p.rules {
+		if matchAny(p.rules[i].span, span) {
+			buf = append(buf, &p.rules[i])
 		}
-
-		for _, fn := range fn {
-			if fn(k) {
-				return true
-			}
-		}
-
-		return false
 	}
 
-	ruleValueFn := func(fn []ruleValueFn, v *common.AnyValue) bool {
-		if v == nil {
-			return false
-		}
+	return buf
+}
 
-		if len(fn) == 0 {
-			return true
-		}
-
-		for _, fn := range fn {
-			if fn(v) {
-				return true
-			}
-		}
-
-		return false
-	}
-
-	ruleSpanFn := func(fn []ruleSpanFn, v *trace.Span) bool {
-		if v == nil {
-			return false
-		}
-
-		if len(fn) == 0 {
-			return true
-		}
-
-		for _, fn := range fn {
-			if fn(v) {
-				return true
-			}
-		}
-
-		return false
-	}
-
-	for _, rule := range p.rules {
-		if !ruleSpanFn(rule.span, span) {
+// rule returns the strategy of the first rule matching the attribute.
+// rules must be prepared by spanRules.
+func (p *Proxy) rule(kv *common.KeyValue, rules []*Rule) RuleStrategy {
+	for _, rule := range rules {
+		if !matchAny(rule.key, kv.Key) {
 			continue
 		}
 
-		if !ruleKeyFn(rule.key, kv.Key) {
-			continue
-		}
-
-		if !ruleValueFn(rule.value, kv.Value) {
+		if kv.Value == nil || !matchAny(rule.value, kv.Value) {
 			continue
 		}
 
@@ -327,4 +292,19 @@ func (p *Proxy) rule(kv *common.KeyValue, span *trace.Span) RuleStrategy {
 	}
 
 	return p.defaultStrategy
+}
+
+// matchAny combines the checks as OR, an empty list matches any value.
+func matchAny[F ~func(T) bool, T any](fn []F, v T) bool {
+	if len(fn) == 0 {
+		return true
+	}
+
+	for _, fn := range fn {
+		if fn(v) {
+			return true
+		}
+	}
+
+	return false
 }
