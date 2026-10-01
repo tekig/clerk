@@ -1,0 +1,10 @@
+.git
+.github
+.vscode
+.continue
+bin
+tmp
+
+# Local configs may contain storage credentials, only examples are kept
+config/*
+!config/example_*.yaml
