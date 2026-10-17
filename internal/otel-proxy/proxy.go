@@ -2,7 +2,6 @@ package otelproxy
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"log"
 	"sync"
@@ -13,16 +12,20 @@ import (
 	"github.com/tekig/clerk/internal/repository/http"
 	"github.com/tekig/clerk/internal/uuid"
 	"github.com/tekig/clerk/internal/x/xsync"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/ptrace"
+	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-	otelcollector "go.opentelemetry.io/proto/otlp/collector/trace/v1"
-	common "go.opentelemetry.io/proto/otlp/common/v1"
-	trace "go.opentelemetry.io/proto/otlp/trace/v1"
 )
 
+type Target interface {
+	Export(ctx context.Context, req ptraceotlp.ExportRequest) (ptraceotlp.ExportResponse, error)
+}
+
 type Proxy struct {
-	target          otelcollector.TraceServiceClient
+	target          Target
 	recorder        *recorder.Recorder
 	formatURL       string
 	defaultStrategy RuleStrategy
@@ -45,8 +48,8 @@ type ConfigRule struct {
 
 type (
 	ruleKeyFn   func(v string) bool
-	ruleValueFn func(v *common.AnyValue) bool
-	ruleSpanFn  func(v *trace.Span) bool
+	ruleValueFn func(v pcommon.Value) bool
+	ruleSpanFn  func(v ptrace.Span) bool
 )
 
 type RuleStrategy string
@@ -104,93 +107,44 @@ func New(c Config) (*Proxy, error) {
 	}, nil
 }
 
-func (p *Proxy) Grep(ctx context.Context, res []*trace.ResourceSpans) (*otelcollector.ExportTraceServiceResponse, error) {
+func (p *Proxy) Grep(ctx context.Context, td ptrace.Traces) (ptraceotlp.ExportResponse, error) {
 	var events []*pb.Event
 	// Rules applicable to the current span, reused between spans
 	var spanRules []*Rule
-	for _, prevRes := range res {
+	for _, prevRes := range td.ResourceSpans().All() {
 		serviceName := entity.MetaValueUnknown
-		for _, kv := range prevRes.GetResource().GetAttributes() {
-			if kv.GetKey() == "service.name" {
-				serviceName = kv.GetValue().GetStringValue()
-			}
+		if v, ok := prevRes.Resource().Attributes().Get("service.name"); ok {
+			serviceName = v.Str()
 		}
 
-		for _, prevScope := range prevRes.ScopeSpans {
-			for _, prevSpan := range prevScope.Spans {
+		for _, prevScope := range prevRes.ScopeSpans().All() {
+			for _, prevSpan := range prevScope.Spans().All() {
 				eventAttributes := make([]*pb.Attribute, 0)
-				nextAttributes := make([]*common.KeyValue, 0, len(prevSpan.Attributes))
 				spanRules = p.spanRules(prevSpan, spanRules)
-				for _, prevAttribute := range prevSpan.Attributes {
-					switch p.rule(prevAttribute, spanRules) {
+				prevSpan.Attributes().RemoveIf(func(key string, value pcommon.Value) bool {
+					switch p.rule(key, value, spanRules) {
 					case RuleStrategyUnlink:
-						var eventAttribute *pb.Attribute
-						switch v := prevAttribute.GetValue().GetValue().(type) {
-						case *common.AnyValue_StringValue:
-							eventAttribute = &pb.Attribute{
-								Key: prevAttribute.Key,
-								Value: &pb.Attribute_AsString{
-									AsString: v.StringValue,
-								},
-							}
-						case *common.AnyValue_BoolValue:
-							eventAttribute = &pb.Attribute{
-								Key: prevAttribute.Key,
-								Value: &pb.Attribute_AsBool{
-									AsBool: v.BoolValue,
-								},
-							}
-						case *common.AnyValue_IntValue:
-							eventAttribute = &pb.Attribute{
-								Key: prevAttribute.Key,
-								Value: &pb.Attribute_AsInt64{
-									AsInt64: v.IntValue,
-								},
-							}
-						case *common.AnyValue_DoubleValue:
-							eventAttribute = &pb.Attribute{
-								Key: prevAttribute.Key,
-								Value: &pb.Attribute_AsDouble{
-									AsDouble: v.DoubleValue,
-								},
-							}
-						default:
-							eventAttribute = &pb.Attribute{
-								Key: prevAttribute.Key,
-								Value: &pb.Attribute_AsString{
-									AsString: fmt.Sprintf("unsupport attribute `%T`", v),
-								},
-							}
-						}
+						eventAttributes = append(eventAttributes, eventAttribute(key, value))
 
-						eventAttributes = append(eventAttributes, eventAttribute)
+						return true
 					case RuleStrategyRemove:
-						// remove
+						return true
 					default: // RuleStrategyKeep
-						nextAttributes = append(nextAttributes, prevAttribute)
+						return false
 					}
-				}
+				})
 				meterSpanCounter.Add(
 					ctx,
 					1,
 					metric.WithAttributes(
 						attribute.String("service.name", serviceName),
-						attribute.String("span.name", prevSpan.Name),
+						attribute.String("span.name", prevSpan.Name()),
 					),
 				)
 				if len(eventAttributes) > 0 {
 					id := uuid.New()
 
-					nextAttributes = append(nextAttributes,
-						&common.KeyValue{
-							Key: "event_url",
-							Value: &common.AnyValue{
-								Value: &common.AnyValue_StringValue{
-									StringValue: fmt.Sprintf(p.formatURL, id.String()),
-								},
-							},
-						},
-					)
+					prevSpan.Attributes().PutStr("event_url", fmt.Sprintf(p.formatURL, id.String()))
 
 					metaEvent := []*pb.Attribute{
 						{
@@ -201,17 +155,17 @@ func (p *Proxy) Grep(ctx context.Context, res []*trace.ResourceSpans) (*otelcoll
 						}, {
 							Key: entity.MetaSpanName,
 							Value: &pb.Attribute_AsString{
-								AsString: prevSpan.Name,
+								AsString: prevSpan.Name(),
 							},
 						}, {
 							Key: entity.MetaTraceID,
 							Value: &pb.Attribute_AsString{
-								AsString: hex.EncodeToString(prevSpan.TraceId),
+								AsString: prevSpan.TraceID().String(),
 							},
 						}, {
 							Key: entity.MetaSpanID,
 							Value: &pb.Attribute_AsString{
-								AsString: hex.EncodeToString(prevSpan.SpanId),
+								AsString: prevSpan.SpanID().String(),
 							},
 						},
 					}
@@ -223,7 +177,6 @@ func (p *Proxy) Grep(ctx context.Context, res []*trace.ResourceSpans) (*otelcoll
 
 					events = append(events, event)
 				}
-				prevSpan.Attributes = nextAttributes
 			}
 		}
 	}
@@ -231,11 +184,9 @@ func (p *Proxy) Grep(ctx context.Context, res []*trace.ResourceSpans) (*otelcoll
 	// Export can take a long time, and it's doing nothing the entire time
 	// Let's run it in parallel to free up memory a little earlier
 	var wg xsync.ErrGroup
-	var response *otelcollector.ExportTraceServiceResponse
+	var response ptraceotlp.ExportResponse
 	wg.Go(func() error {
-		res, err := p.target.Export(ctx, &otelcollector.ExportTraceServiceRequest{
-			ResourceSpans: res,
-		})
+		res, err := p.target.Export(ctx, ptraceotlp.NewExportRequestFromTraces(td))
 		if err != nil {
 			return fmt.Errorf("target export: %w", err)
 		}
@@ -256,16 +207,56 @@ func (p *Proxy) Grep(ctx context.Context, res []*trace.ResourceSpans) (*otelcoll
 	}
 
 	if err := wg.Wait(); err != nil {
-		return nil, fmt.Errorf("wait: %w", err)
+		return ptraceotlp.ExportResponse{}, fmt.Errorf("wait: %w", err)
 	}
 
 	return response, nil
 }
 
+func eventAttribute(key string, value pcommon.Value) *pb.Attribute {
+	switch value.Type() {
+	case pcommon.ValueTypeStr:
+		return &pb.Attribute{
+			Key: key,
+			Value: &pb.Attribute_AsString{
+				AsString: value.Str(),
+			},
+		}
+	case pcommon.ValueTypeBool:
+		return &pb.Attribute{
+			Key: key,
+			Value: &pb.Attribute_AsBool{
+				AsBool: value.Bool(),
+			},
+		}
+	case pcommon.ValueTypeInt:
+		return &pb.Attribute{
+			Key: key,
+			Value: &pb.Attribute_AsInt64{
+				AsInt64: value.Int(),
+			},
+		}
+	case pcommon.ValueTypeDouble:
+		return &pb.Attribute{
+			Key: key,
+			Value: &pb.Attribute_AsDouble{
+				AsDouble: value.Double(),
+			},
+		}
+	default:
+		return &pb.Attribute{
+			Key: key,
+			Value: &pb.Attribute_AsString{
+				AsString: fmt.Sprintf("unsupport attribute `%s`", value.Type()),
+			},
+		}
+	}
+}
+
 // spanRules returns the rules whose span conditions match the span, preserving their order.
 // Span conditions do not depend on attributes, so they are checked once per span.
 // buf is reused to avoid allocations.
-func (p *Proxy) spanRules(span *trace.Span, buf []*Rule) []*Rule {
+func (p *Proxy) spanRules(span ptrace.Span, buf []*Rule) []*Rule {
 	buf = buf[:0]
 	for i := range p.rules {
 		if matchAny(p.rules[i].span, span) {
@@ -278,13 +269,13 @@ func (p *Proxy) spanRules(span *trace.Span, buf []*Rule) []*Rule {
 
 // rule returns the strategy of the first rule matching the attribute.
 // rules must be prepared by spanRules.
-func (p *Proxy) rule(kv *common.KeyValue, rules []*Rule) RuleStrategy {
+func (p *Proxy) rule(key string, value pcommon.Value, rules []*Rule) RuleStrategy {
 	for _, rule := range rules {
-		if !matchAny(rule.key, kv.Key) {
+		if !matchAny(rule.key, key) {
 			continue
 		}
 
-		if kv.Value == nil || !matchAny(rule.value, kv.Value) {
+		if value.Type() == pcommon.ValueTypeEmpty || !matchAny(rule.value, value) {
 			continue
 		}
 

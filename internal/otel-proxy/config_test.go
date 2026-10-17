@@ -3,7 +3,7 @@ package otelproxy
 import (
 	"testing"
 
-	trace "go.opentelemetry.io/proto/otlp/trace/v1"
+	"go.opentelemetry.io/collector/pdata/ptrace"
 )
 
 func Test_parseRuleSpan(t *testing.T) {
@@ -27,7 +27,9 @@ func Test_parseRuleSpan(t *testing.T) {
 			continue
 		}
 
-		if got := fn(&trace.Span{Name: tt.name}); got != tt.match {
+		span := ptrace.NewSpan()
+		span.SetName(tt.name)
+		if got := fn(span); got != tt.match {
 			t.Errorf("parseRuleSpan(%q)(%q) = %v, want %v", tt.rule, tt.name, got, tt.match)
 		}
 	}

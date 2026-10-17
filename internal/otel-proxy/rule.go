@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	common "go.opentelemetry.io/proto/otlp/common/v1"
-	trace "go.opentelemetry.io/proto/otlp/trace/v1"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/ptrace"
 )
 
 func ruleLenGE(rule string) (ruleValueFn, error) {
@@ -15,16 +15,16 @@ func ruleLenGE(rule string) (ruleValueFn, error) {
 		return nil, fmt.Errorf("atoi: %w", err)
 	}
 
-	return func(v *common.AnyValue) bool {
-		switch v := v.Value.(type) {
-		case *common.AnyValue_ArrayValue:
-			return len(v.ArrayValue.Values) >= size
-		case *common.AnyValue_BytesValue:
-			return len(v.BytesValue) >= size
-		case *common.AnyValue_KvlistValue:
-			return len(v.KvlistValue.Values) >= size
-		case *common.AnyValue_StringValue:
-			return len(v.StringValue) >= size
+	return func(v pcommon.Value) bool {
+		switch v.Type() {
+		case pcommon.ValueTypeSlice:
+			return v.Slice().Len() >= size
+		case pcommon.ValueTypeBytes:
+			return v.Bytes().Len() >= size
+		case pcommon.ValueTypeMap:
+			return v.Map().Len() >= size
+		case pcommon.ValueTypeStr:
+			return len(v.Str()) >= size
 		default:
 			return false
 		}
@@ -44,7 +44,7 @@ func ruleEquals(rule string) ruleKeyFn {
 }
 
 func ruleSpan(fn ruleKeyFn) ruleSpanFn {
-	return func(v *trace.Span) bool {
-		return fn(v.Name)
+	return func(v ptrace.Span) bool {
+		return fn(v.Name())
 	}
 }

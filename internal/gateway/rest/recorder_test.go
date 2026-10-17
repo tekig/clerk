@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
@@ -13,39 +14,47 @@ import (
 	"github.com/tekig/clerk/internal/recorder"
 	"github.com/tekig/clerk/internal/repository/mem"
 	"github.com/tekig/clerk/internal/repository/mock"
-	otelcollector "go.opentelemetry.io/proto/otlp/collector/trace/v1"
-	common "go.opentelemetry.io/proto/otlp/common/v1"
-	trace "go.opentelemetry.io/proto/otlp/trace/v1"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/ptrace"
+	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
 	"go.uber.org/mock/gomock"
-	"google.golang.org/protobuf/proto"
 )
 
 // collector is an OTLP/HTTP collector that keeps received spans.
 type collector struct {
 	mu    sync.Mutex
-	spans []*trace.Span
+	spans []ptrace.Span
 }
 
 func (c *collector) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
 
-	req := &otelcollector.ExportTraceServiceRequest{}
-	if err := proto.Unmarshal(body, req); err != nil {
+	req := ptraceotlp.NewExportRequest()
+	if err := req.UnmarshalProto(body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	c.mu.Lock()
-	for _, rs := range req.ResourceSpans {
-		for _, ss := range rs.ScopeSpans {
-			c.spans = append(c.spans, ss.Spans...)
+	for _, rs := range req.Traces().ResourceSpans().All() {
+		for _, ss := range rs.ScopeSpans().All() {
+			for _, span := range ss.Spans().All() {
+				c.spans = append(c.spans, span)
+			}
 		}
 	}
 	c.mu.Unlock()
 
-	res, _ := proto.Marshal(&otelcollector.ExportTraceServiceResponse{})
+	res, _ := ptraceotlp.NewExportResponse().MarshalProto()
 	w.Header().Set("Content-Type", "application/x-protobuf")
 	w.Write(res)
+}
+
+// onlyA reports whether attrs keep only `a`, other attributes are removed by the proxy.
+func onlyA(attrs pcommon.Map) bool {
+	_, ok := attrs.Get("a")
+
+	return ok && attrs.Len() == 1
 }
 
 func newGateway(t *testing.T) (*Recorder, *collector) {
@@ -90,19 +99,13 @@ func newGateway(t *testing.T) (*Recorder, *collector) {
 func exportBody(t *testing.T) []byte {
 	t.Helper()
 
-	body, err := proto.Marshal(&otelcollector.ExportTraceServiceRequest{
-		ResourceSpans: []*trace.ResourceSpans{{
-			ScopeSpans: []*trace.ScopeSpans{{
-				Spans: []*trace.Span{{
-					Name: "op",
-					Attributes: []*common.KeyValue{
-						{Key: "a", Value: &common.AnyValue{Value: &common.AnyValue_StringValue{StringValue: "1"}}},
-						{Key: "secret", Value: &common.AnyValue{Value: &common.AnyValue_StringValue{StringValue: "token"}}},
-					},
-				}},
-			}},
-		}},
-	})
+	td := ptrace.NewTraces()
+	span := td.ResourceSpans().AppendEmpty().ScopeSpans().AppendEmpty().Spans().AppendEmpty()
+	span.SetName("op")
+	span.Attributes().PutStr("a", "1")
+	span.Attributes().PutStr("secret", "token")
+
+	body, err := ptraceotlp.NewExportRequestFromTraces(td).MarshalProto()
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
@@ -148,15 +151,18 @@ func TestRecorder_Export(t *testing.T) {
 			if rec.Code != http.StatusOK {
 				t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
 			}
-			if err := proto.Unmarshal(rec.Body.Bytes(), &otelcollector.ExportTraceServiceResponse{}); err != nil {
+			if ct := rec.Header().Get("Content-Type"); ct != tt.mimeType {
+				t.Errorf("response content type = %q, want %q", ct, tt.mimeType)
+			}
+			if err := ptraceotlp.NewExportResponse().UnmarshalProto(rec.Body.Bytes()); err != nil {
 				t.Errorf("response is not protobuf: %v", err)
 			}
 
 			if len(c.spans) != 1 {
 				t.Fatalf("collector spans = %d, want 1", len(c.spans))
 			}
-			if attrs := c.spans[0].Attributes; len(attrs) != 1 || attrs[0].Key != "a" {
-				t.Errorf("collector span attributes = %v, want only `a`", attrs)
+			if attrs := c.spans[0].Attributes(); !onlyA(attrs) {
+				t.Errorf("collector span attributes = %v, want only `a`", attrs.AsRaw())
 			}
 		})
 	}
@@ -170,7 +176,9 @@ func TestRecorder_ExportErrors(t *testing.T) {
 		status   int
 	}{
 		{"invalid body", "application/x-protobuf", []byte("not a protobuf"), http.StatusBadRequest},
-		{"json is not supported", "application/json", []byte(`{"resourceSpans":[]}`), http.StatusUnsupportedMediaType},
+		{"invalid json", "application/json", []byte(`{"resourceSpans":`), http.StatusBadRequest},
+		{"json id is not hex", "application/json", []byte(`{"resourceSpans":[{"scopeSpans":[{"spans":[{"traceId":"zz"}]}]}]}`), http.StatusBadRequest},
+		{"text is not supported", "text/plain", []byte(`{"resourceSpans":[]}`), http.StatusUnsupportedMediaType},
 		{"no content type", "", nil, http.StatusUnsupportedMediaType},
 	}
 	for _, tt := range tests {
@@ -196,6 +204,83 @@ func TestRecorder_ExportErrors(t *testing.T) {
 				t.Errorf("collector spans = %d, want 0", len(c.spans))
 			}
 		})
+	}
+}
+
+func TestRecorder_ExportJSON(t *testing.T) {
+	g, c := newGateway(t)
+
+	// OTLP/JSON: ids are hex, enums are numbers
+	body := `{"resourceSpans":[{"scopeSpans":[{"spans":[{
+		"traceId":"5b8efff798038103d269b633813fc60c",
+		"spanId":"eee19b7ec3c1b174",
+		"parentSpanId":"eee19b7ec3c1b173",
+		"name":"op",
+		"kind":2,
+		"startTimeUnixNano":"1544712660000000000",
+		"links":[{"traceId":"5b8efff798038103d269b633813fc60d","spanId":"eee19b7ec3c1b175"}],
+		"attributes":[
+			{"key":"a","value":{"stringValue":"1"}},
+			{"key":"secret","value":{"stringValue":"token"}}
+		]
+	}]}]}]}`
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/traces", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	g.httpServer.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("response content type = %q, want application/json", ct)
+	}
+	if err := ptraceotlp.NewExportResponse().UnmarshalJSON(rec.Body.Bytes()); err != nil {
+		t.Errorf("response is not json: %v", err)
+	}
+
+	if len(c.spans) != 1 {
+		t.Fatalf("collector spans = %d, want 1", len(c.spans))
+	}
+
+	span := c.spans[0]
+	link := span.Links().At(0)
+	for want, got := range map[string]string{
+		"5b8efff798038103d269b633813fc60c": span.TraceID().String(),
+		"eee19b7ec3c1b174":                 span.SpanID().String(),
+		"eee19b7ec3c1b173":                 span.ParentSpanID().String(),
+		"5b8efff798038103d269b633813fc60d": link.TraceID().String(),
+		"eee19b7ec3c1b175":                 link.SpanID().String(),
+	} {
+		if got != want {
+			t.Errorf("id = %s, want %s", got, want)
+		}
+	}
+	if span.Kind() != ptrace.SpanKindServer {
+		t.Errorf("kind = %v, want server", span.Kind())
+	}
+	if span.StartTimestamp() != 1544712660000000000 {
+		t.Errorf("start time = %d", span.StartTimestamp())
+	}
+	if attrs := span.Attributes(); !onlyA(attrs) {
+		t.Errorf("collector span attributes = %v, want only `a`", attrs.AsRaw())
+	}
+}
+
+func TestRecorder_TrailingSlash(t *testing.T) {
+	g, c := newGateway(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/traces/", bytes.NewReader(exportBody(t)))
+	req.Header.Set("Content-Type", "application/x-protobuf")
+	rec := httptest.NewRecorder()
+	g.httpServer.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+	}
+	if len(c.spans) != 1 {
+		t.Errorf("collector spans = %d, want 1", len(c.spans))
 	}
 }
 

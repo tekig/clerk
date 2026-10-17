@@ -8,13 +8,12 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/tekig/clerk/internal/logger"
 	otelproxy "github.com/tekig/clerk/internal/otel-proxy"
 	"github.com/tekig/clerk/internal/x/xbytes"
-	tracev1 "go.opentelemetry.io/proto/otlp/collector/trace/v1"
+	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
 )
 
 var poolBuf = sync.Pool{
@@ -23,10 +22,27 @@ var poolBuf = sync.Pool{
 	},
 }
 
+// codec is OTLP/HTTP encoding of the export request and response.
+type codec struct {
+	unmarshal func(ptraceotlp.ExportRequest, []byte) error
+	marshal   func(ptraceotlp.ExportResponse) ([]byte, error)
+}
+
+var (
+	protoCodec = codec{
+		unmarshal: ptraceotlp.ExportRequest.UnmarshalProto,
+		marshal:   ptraceotlp.ExportResponse.MarshalProto,
+	}
+	jsonCodec = codec{
+		unmarshal: ptraceotlp.ExportRequest.UnmarshalJSON,
+		marshal:   ptraceotlp.ExportResponse.MarshalJSON,
+	}
+)
+
 type Recorder struct {
 	otelProxy  *otelproxy.Proxy
 	httpServer *echo.Echo
-	marshalers map[string]runtime.Marshaler
+	codecs     map[string]codec
 	address    string
 }
 
@@ -40,10 +56,11 @@ func NewRecorder(config RecorderConfig) (*Recorder, error) {
 	r := &Recorder{
 		otelProxy:  config.OTELProxy,
 		httpServer: echo.New(),
-		// Only OTLP/HTTP binary protobuf is supported
-		marshalers: map[string]runtime.Marshaler{
-			"application/x-protobuf": &runtime.ProtoMarshaller{},
-			"application/protobuf":   &runtime.ProtoMarshaller{},
+		// OTLP/HTTP binary protobuf and JSON
+		codecs: map[string]codec{
+			"application/x-protobuf": protoCodec,
+			"application/protobuf":   protoCodec,
+			"application/json":       jsonCodec,
 		},
 		address: config.HTTPAddress,
 	}
@@ -55,6 +72,7 @@ func NewRecorder(config RecorderConfig) (*Recorder, error) {
 	r.httpServer.Server.SetKeepAlivesEnabled(false)
 	r.httpServer.HideBanner = true
 	r.httpServer.HidePort = true
+	r.httpServer.Pre(middleware.RemoveTrailingSlash())
 	r.httpServer.Use(
 		logger.EchoLogger(),
 		ConcurrencyLimiter(config.MaxConcurrency),
@@ -91,57 +109,58 @@ func (r *Recorder) Export(c echo.Context) error {
 		return fmt.Errorf("read body: %w", err)
 	}
 
-	inboundMarshaler, outboundMarshaler := r.marshaler(c.Request())
-	if inboundMarshaler == nil {
+	inbound, outbound, outboundContentType, ok := r.codec(c.Request())
+	if !ok {
 		return echo.NewHTTPError(
 			http.StatusUnsupportedMediaType,
 			fmt.Sprintf("unsupported content type `%s`", c.Request().Header.Get(echo.HeaderContentType)),
 		)
 	}
 
-	var protoReq tracev1.ExportTraceServiceRequest
-	if err := inboundMarshaler.Unmarshal(buf, &protoReq); err != nil {
+	req := ptraceotlp.NewExportRequest()
+	if err := inbound.unmarshal(req, buf); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("unmarshal: %s", err))
 	}
 
-	resp, err := r.otelProxy.Grep(c.Request().Context(), protoReq.ResourceSpans)
+	resp, err := r.otelProxy.Grep(c.Request().Context(), req.Traces())
 	if err != nil {
 		return fmt.Errorf("grep: %w", err)
 	}
 
-	if err := outboundMarshaler.NewEncoder(c.Response().Writer).Encode(resp); err != nil {
+	body, err := outbound.marshal(resp)
+	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
 	}
 
-	return nil
+	return c.Blob(http.StatusOK, outboundContentType, body)
 }
 
-// marshaler returns nil inbound if the content type is not supported.
-func (r *Recorder) marshaler(req *http.Request) (inbound runtime.Marshaler, outbound runtime.Marshaler) {
-	for _, accept := range req.Header[echo.HeaderAccept] {
-		if m, ok := r.marshalers[accept]; ok {
-			outbound = m
-			break
-		}
-	}
-
+// codec returns false if the content type is not supported.
+func (r *Recorder) codec(req *http.Request) (inbound codec, outbound codec, outboundContentType string, ok bool) {
+	var inboundContentType string
 	for _, content := range req.Header[echo.HeaderContentType] {
 		contentType, _, err := mime.ParseMediaType(content)
 		if err != nil {
 			continue
 		}
 
-		if m, ok := r.marshalers[contentType]; ok {
-			inbound = m
+		if inbound, ok = r.codecs[contentType]; ok {
+			inboundContentType = contentType
 			break
 		}
 	}
 
-	if outbound == nil {
-		outbound = inbound
+	if !ok {
+		return codec{}, codec{}, "", false
 	}
 
-	return inbound, outbound
+	for _, accept := range req.Header[echo.HeaderAccept] {
+		if outbound, ok := r.codecs[accept]; ok {
+			return inbound, outbound, accept, true
+		}
+	}
+
+	return inbound, inbound, inboundContentType, true
 }
 
 func ReadAll(r io.Reader, b []byte) ([]byte, error) {

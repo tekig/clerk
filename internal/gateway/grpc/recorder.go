@@ -11,7 +11,7 @@ import (
 	"github.com/tekig/clerk/internal/pb"
 	"github.com/tekig/clerk/internal/recorder"
 	"github.com/tekig/clerk/internal/uuid"
-	otelcollector "go.opentelemetry.io/proto/otlp/collector/trace/v1"
+	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/reflection"
@@ -25,7 +25,7 @@ type Recorder struct {
 	grpcServer  *grpc.Server
 	grpcAddress string
 	pb.UnimplementedRecorderServer
-	otelcollector.UnimplementedTraceServiceServer
+	ptraceotlp.UnimplementedGRPCServer
 }
 
 type RecorderConfig struct {
@@ -55,7 +55,7 @@ func NewRecorder(config RecorderConfig) (*Recorder, error) {
 
 	reflection.Register(g.grpcServer)
 	pb.RegisterRecorderServer(g.grpcServer, g)
-	otelcollector.RegisterTraceServiceServer(g.grpcServer, g)
+	ptraceotlp.RegisterGRPCServer(g.grpcServer, g)
 
 	return g, nil
 }
@@ -109,10 +109,10 @@ func (g *Recorder) CreateEvents(ctx context.Context, req *pb.CreateEventsRequest
 	return &pb.CreateEventsResponse{}, nil
 }
 
-func (g *Recorder) Export(ctx context.Context, req *otelcollector.ExportTraceServiceRequest) (*otelcollector.ExportTraceServiceResponse, error) {
-	response, err := g.otelProxy.Grep(ctx, req.ResourceSpans)
+func (g *Recorder) Export(ctx context.Context, req ptraceotlp.ExportRequest) (ptraceotlp.ExportResponse, error) {
+	response, err := g.otelProxy.Grep(ctx, req.Traces())
 	if err != nil {
-		return nil, fmt.Errorf("grep: %w", err)
+		return ptraceotlp.ExportResponse{}, fmt.Errorf("grep: %w", err)
 	}
 
 	return response, nil

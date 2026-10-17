@@ -4,12 +4,38 @@ import (
 	"strings"
 	"testing"
 
-	common "go.opentelemetry.io/proto/otlp/common/v1"
-	trace "go.opentelemetry.io/proto/otlp/trace/v1"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/ptrace"
 )
 
-func stringValue(v string) *common.AnyValue {
-	return &common.AnyValue{Value: &common.AnyValue_StringValue{StringValue: v}}
+func bytesValue(b string) pcommon.Value {
+	v := pcommon.NewValueBytes()
+	v.Bytes().FromRaw([]byte(b))
+
+	return v
+}
+
+func sliceValue(items ...any) pcommon.Value {
+	v := pcommon.NewValueSlice()
+	_ = v.Slice().FromRaw(items)
+
+	return v
+}
+
+func mapValue(keys ...string) pcommon.Value {
+	v := pcommon.NewValueMap()
+	for _, k := range keys {
+		v.Map().PutStr(k, "")
+	}
+
+	return v
+}
+
+func spanNamed(name string) ptrace.Span {
+	span := ptrace.NewSpan()
+	span.SetName(name)
+
+	return span
 }
 
 func TestRuleLenGE(t *testing.T) {
@@ -20,22 +46,20 @@ func TestRuleLenGE(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		value *common.AnyValue
+		value pcommon.Value
 		want  bool
 	}{
-		{"short string", stringValue("ab"), false},
-		{"string of exact length", stringValue("abc"), true},
-		{"long string", stringValue("abcde"), true},
-		{"short bytes", &common.AnyValue{Value: &common.AnyValue_BytesValue{BytesValue: []byte("ab")}}, false},
-		{"long bytes", &common.AnyValue{Value: &common.AnyValue_BytesValue{BytesValue: []byte("abcde")}}, true},
-		{"long array", &common.AnyValue{Value: &common.AnyValue_ArrayValue{ArrayValue: &common.ArrayValue{
-			Values: []*common.AnyValue{stringValue("1"), stringValue("2"), stringValue("3"), stringValue("4")},
-		}}}, true},
-		{"long kvlist", &common.AnyValue{Value: &common.AnyValue_KvlistValue{KvlistValue: &common.KeyValueList{
-			Values: []*common.KeyValue{{Key: "1"}, {Key: "2"}, {Key: "3"}, {Key: "4"}},
-		}}}, true},
-		{"int", &common.AnyValue{Value: &common.AnyValue_IntValue{IntValue: 123456}}, false},
-		{"bool", &common.AnyValue{Value: &common.AnyValue_BoolValue{BoolValue: true}}, false},
+		{"short string", pcommon.NewValueStr("ab"), false},
+		{"string of exact length", pcommon.NewValueStr("abc"), true},
+		{"long string", pcommon.NewValueStr("abcde"), true},
+		{"short bytes", bytesValue("ab"), false},
+		{"long bytes", bytesValue("abcde"), true},
+		{"short array", sliceValue("1", "2"), false},
+		{"long array", sliceValue("1", "2", "3", "4"), true},
+		{"short kvlist", mapValue("1", "2"), false},
+		{"long kvlist", mapValue("1", "2", "3", "4"), true},
+		{"int", pcommon.NewValueInt(123456), false},
+		{"bool", pcommon.NewValueBool(true), false},
 	}
 	for _, tt := range tests {
 		if got := fn(tt.value); got != tt.want {
@@ -55,7 +79,7 @@ func TestRuleKey(t *testing.T) {
 	if !ruleEquals("http.method")("http.method") || ruleEquals("http.method")("http.method.x") {
 		t.Errorf("ruleEquals mismatch")
 	}
-	if !ruleSpan(ruleEquals("Request"))(&trace.Span{Name: "Request"}) {
+	if !ruleSpan(ruleEquals("Request"))(spanNamed("Request")) {
 		t.Errorf("ruleSpan mismatch")
 	}
 }
@@ -139,20 +163,20 @@ func TestProxy_Rule(t *testing.T) {
 	p := &Proxy{rules: rules, defaultStrategy: RuleStrategyKeep}
 
 	tests := []struct {
-		name string
-		span string
-		kv   *common.KeyValue
-		want RuleStrategy
+		name  string
+		span  string
+		key   string
+		value pcommon.Value
+		want  RuleStrategy
 	}{
-		{"span rule matches", "Upload", &common.KeyValue{Key: "http.body", Value: stringValue("long value")}, RuleStrategyUnlink},
-		{"span rule skipped for other span", "Download", &common.KeyValue{Key: "http.body", Value: stringValue("long value")}, RuleStrategyRemove},
-		{"value does not match, next rule", "Download", &common.KeyValue{Key: "http.body", Value: stringValue("ab")}, RuleStrategyUnlink},
-		{"nil value never matches", "Download", &common.KeyValue{Key: "http.body"}, RuleStrategyKeep},
-		{"no rule, default", "Download", &common.KeyValue{Key: "db.statement", Value: stringValue("select")}, RuleStrategyKeep},
+		{"span rule matches", "Upload", "http.body", pcommon.NewValueStr("long value"), RuleStrategyUnlink},
+		{"span rule skipped for other span", "Download", "http.body", pcommon.NewValueStr("long value"), RuleStrategyRemove},
+		{"value does not match, next rule", "Download", "http.body", pcommon.NewValueStr("ab"), RuleStrategyUnlink},
+		{"empty value never matches", "Download", "http.body", pcommon.NewValueEmpty(), RuleStrategyKeep},
+		{"no rule, default", "Download", "db.statement", pcommon.NewValueStr("select"), RuleStrategyKeep},
 	}
 	for _, tt := range tests {
-		span := &trace.Span{Name: tt.span}
-		if got := p.rule(tt.kv, p.spanRules(span, nil)); got != tt.want {
+		if got := p.rule(tt.key, tt.value, p.spanRules(spanNamed(tt.span), nil)); got != tt.want {
 			t.Errorf("%s: got %s, want %s", tt.name, got, tt.want)
 		}
 	}
